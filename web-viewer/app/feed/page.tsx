@@ -8,6 +8,7 @@
  * Requirements: 15.1, 16.1, 17.1
  */
 
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase";
 import CollectionFilter from "@/components/CollectionFilter";
@@ -73,20 +74,28 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="feed-layout">
-      {/* Requirement 16.1: collection filter panel */}
-      <CollectionFilter
-        collections={(collections as Collection[]) ?? []}
-        activeId={searchParams.collection}
-      />
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-8">
+        <div className="flex gap-6 items-start">
+          {/* Requirement 16.1: collection filter sidebar.
+              Wrapped in Suspense because CollectionFilter uses useSearchParams(). */}
+          <Suspense fallback={null}>
+            <CollectionFilter
+              collections={(collections as Collection[]) ?? []}
+              activeId={searchParams.collection}
+            />
+          </Suspense>
 
-      <main>
-        {/* Requirement 17.1: search input */}
-        <SearchBar initialQuery={searchParams.q ?? ""} />
+          {/* Main content area */}
+          <main className="flex-1 min-w-0 flex flex-col gap-5">
+            {/* Requirement 17.1: search input */}
+            <SearchBar initialQuery={searchParams.q ?? ""} />
 
-        {/* Requirements 15.1, 17.5: post list or "No results found" */}
-        <PostCardList posts={(posts as FeedPost[]) ?? []} />
-      </main>
+            {/* Requirements 15.1, 17.5: post grid or "No results found" empty state */}
+            <PostCardList posts={(posts as FeedPost[]) ?? []} />
+          </main>
+        </div>
+      </div>
     </div>
   );
 }

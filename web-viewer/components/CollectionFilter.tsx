@@ -48,8 +48,14 @@ export default function CollectionFilter({
   }
 
   return (
-    <aside aria-label="Collection filter">
-      <ul>
+    <aside
+      aria-label="Collection filter"
+      className="w-52 flex-shrink-0 bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-4 h-fit sticky top-8"
+    >
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-3 px-1">
+        Collections
+      </h2>
+      <ul className="space-y-0.5">
         {/* "All" option is always present — Requirement 16.1, 16.3 */}
         <li>
           <button
@@ -58,8 +64,8 @@ export default function CollectionFilter({
             aria-current={!activeId ? "page" : undefined}
             className={
               !activeId
-                ? "font-bold text-blue-600"
-                : "text-gray-600 hover:text-gray-900"
+                ? "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-indigo-600 bg-indigo-50 dark:bg-indigo-950 dark:text-indigo-400"
+                : "w-full text-left px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors"
             }
           >
             All
@@ -68,7 +74,7 @@ export default function CollectionFilter({
 
         {collections.length === 0 ? (
           /* Requirement 16.5: empty state message */
-          <li className="text-gray-500 text-sm italic px-1 py-2">
+          <li className="text-gray-400 text-xs italic px-3 py-2">
             No collections yet
           </li>
         ) : (
@@ -80,8 +86,8 @@ export default function CollectionFilter({
                 aria-current={activeId === c.id ? "page" : undefined}
                 className={
                   activeId === c.id
-                    ? "font-bold text-blue-600"
-                    : "text-gray-600 hover:text-gray-900"
+                    ? "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold text-indigo-600 bg-indigo-50 dark:bg-indigo-950 dark:text-indigo-400"
+                    : "w-full text-left px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors"
                 }
               >
                 {c.name}

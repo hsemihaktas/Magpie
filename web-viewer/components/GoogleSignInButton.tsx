@@ -1,6 +1,6 @@
 "use client";
 
-import { createBrowserClient } from "@/lib/supabase";
+import { createBrowserClient } from "@/lib/supabase.browser";
 
 /**
  * Client Component that initiates the Google OAuth flow via Supabase.

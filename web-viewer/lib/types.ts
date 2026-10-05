@@ -27,6 +27,8 @@ export interface SavedPost {
   saved_at: string;
   collection_id: string | null;
   raw_metadata: Record<string, unknown> | null;
+  /** Persisted thumbnail URL uploaded to Supabase Storage (Requirement 19.5). */
+  thumbnail_url?: string | null;
 }
 
 /**

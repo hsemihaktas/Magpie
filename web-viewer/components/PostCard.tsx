@@ -114,11 +114,8 @@ export default function PostCard({ post }: PostCardProps) {
   // Requirement 15.3, 15.4 — track expand state for long captions
   const [expanded, setExpanded] = useState(false);
 
-  // 5. Thumbnail: prefer thumbnail_url (added in task 21.4), fall back to first media_urls item
-  const thumbnailUrl =
-    (post as FeedPost & { thumbnail_url?: string | null }).thumbnail_url ??
-    post.media_urls?.[0] ??
-    null;
+  // 5. Thumbnail: prefer thumbnail_url, fall back to first media_urls item (Req 19.6, 19.8)
+  const thumbnailUrl = post.thumbnail_url ?? post.media_urls?.[0] ?? null;
 
   // 7. Formatted save date
   const savedAtLabel = new Date(post.saved_at).toLocaleDateString(undefined, {

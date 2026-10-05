@@ -10,6 +10,8 @@
  * Requirements: 4.1–4.6, 7.1–7.13
  */
 
+import type { PostMetadata } from "../shared/types/domain";
+
 // ── Utilities ──────────────────────────────────────────────────────────────
 
 /**
@@ -71,6 +73,85 @@ function detectInstagramPostType(el: Element): "post" | "reel" | "story" {
   if (el.querySelector(WITHIN_POST.storyLink)) return "story";
   if (el.querySelector(WITHIN_POST.postLink)) return "post";
   return "post"; // Default fallback (Requirement 4.6)
+}
+
+// ── Metadata Extraction ────────────────────────────────────────────────────
+
+/**
+ * Extracts post metadata from a post card element using the `WITHIN_POST`
+ * selector map. Returns `null` if a post URL cannot be located, which signals
+ * the caller to abort the save (Requirement 7.13).
+ *
+ * All fields other than `post_url` are set to their zero/null value when the
+ * corresponding DOM element is absent — this function never throws
+ * (Requirement 7.12).
+ *
+ * Requirements: 7.1–7.13
+ */
+function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
+  // 1. Locate post URL — abort if missing (Requirement 7.13)
+  const postLinkEl =
+    el.querySelector<HTMLAnchorElement>(WITHIN_POST.postLink) ??
+    el.querySelector<HTMLAnchorElement>(WITHIN_POST.reelLink) ??
+    el.querySelector<HTMLAnchorElement>(WITHIN_POST.storyLink);
+
+  if (!postLinkEl?.href) return null; // Requirement 7.13: abort save
+
+  const post_url = new URL(postLinkEl.href, window.location.origin).href;
+
+  // 2. Extract author username from link path
+  const authorLinkEl = el.querySelector<HTMLAnchorElement>(
+    WITHIN_POST.authorLink,
+  );
+  const author_username = authorLinkEl
+    ? authorLinkEl.pathname.replace(/\//g, "") || null
+    : null;
+
+  // 3. Avatar URL (exclude from media_urls)
+  const avatarEl = el.querySelector<HTMLImageElement>(WITHIN_POST.authorAvatar);
+  const author_avatar_url = avatarEl?.src ?? null;
+
+  // 4. Display name
+  const displayEl = el.querySelector(WITHIN_POST.authorDisplay);
+  const author_display_name = displayEl?.textContent?.trim() ?? null;
+
+  // 5. Caption/content text
+  const captionEl = el.querySelector(WITHIN_POST.caption);
+  const content_text = captionEl?.textContent?.trim() ?? null;
+
+  // 6. Timestamp
+  const timeEl = el.querySelector<HTMLTimeElement>(WITHIN_POST.timestamp);
+  const post_timestamp = timeEl?.getAttribute("datetime") ?? null;
+
+  // 7. Media URLs (exclude avatar)
+  const imageEls = Array.from(
+    el.querySelectorAll<HTMLImageElement>(WITHIN_POST.mediaImages),
+  );
+  const videoEls = Array.from(
+    el.querySelectorAll<HTMLSourceElement>(WITHIN_POST.mediaVideos),
+  );
+  const media_urls = [
+    ...imageEls
+      .map((i) => i.src)
+      .filter((src) => src && src !== author_avatar_url),
+    ...videoEls.map((v) => v.src).filter((src) => !!src),
+  ];
+
+  return {
+    post_url,
+    post_type: detectInstagramPostType(el),
+    platform: "instagram",
+    author_username,
+    author_display_name,
+    author_avatar_url,
+    content_text,
+    media_urls,
+    post_timestamp,
+    raw_metadata: {
+      page_url: window.location.href,
+      extracted_at: new Date().toISOString(),
+    },
+  };
 }
 
 // ── Button Injection ───────────────────────────────────────────────────────

@@ -42,20 +42,80 @@ const INSTAGRAM_POST_SELECTORS: string[] = [
   'div[role="dialog"] article', // Post modal / lightbox
 ];
 
+/**
+ * Selectors scoped to the interior of a single post/reel/story card element.
+ * Structural and semantic selectors are preferred over generated class names
+ * since Instagram's class names change with every deploy (Requirements 7.2, 7.3).
+ */
+const WITHIN_POST = {
+  postLink: 'a[href*="/p/"]',
+  reelLink: 'a[href*="/reel/"]',
+  storyLink: 'a[href*="/stories/"]',
+  authorLink: 'header a[href^="/"][href$="/"]',
+  authorAvatar: "header img",
+  authorDisplay: "header span:not([aria-label])",
+  timestamp: "time[datetime]",
+  caption: 'ul li span, div[class*="_a9zs"] span, div[class*="caption"] span',
+  mediaImages: 'div[role="button"] img, div[class*="_aagv"] img',
+  mediaVideos: "video source",
+  actionBar:
+    'section[class*="_ae2s"], section[class*="coreSpriteDesktopNavProfile"], div[role="group"]',
+} as const;
+
+/**
+ * Detects whether a post card element represents a reel, story, or regular post
+ * by checking for the most specific anchor link patterns first (Requirement 4.6).
+ */
+function detectInstagramPostType(el: Element): "post" | "reel" | "story" {
+  if (el.querySelector(WITHIN_POST.reelLink)) return "reel";
+  if (el.querySelector(WITHIN_POST.storyLink)) return "story";
+  if (el.querySelector(WITHIN_POST.postLink)) return "post";
+  return "post"; // Default fallback (Requirement 4.6)
+}
+
 // ── Button Injection ───────────────────────────────────────────────────────
 
 /**
- * Injects a save button onto the given post element.
- * Skips the element immediately if a button has already been injected,
- * keeping the operation idempotent (Requirement 4.5).
- *
- * Stub — full implementation in task 9.3.
- *
- * Requirements: 4.1, 4.5
+ * Stub — will be wired to metadata extraction and the Collection Picker Modal
+ * in task 10.2.
  */
-function injectSaveButton(el: Element): void {
-  if (el.querySelector('[data-saver-injected="true"]')) return;
-  // stub - implementation in task 9.3
+function openCollectionPicker(postEl: Element): void {
+  console.log("[Magpie] Save button clicked on:", postEl);
+  // Full implementation in task 10.2
+}
+
+/**
+ * Injects a Magpie save button into the action bar of a post element.
+ * Idempotent: skips immediately if a button is already present (Requirement 4.5).
+ * The button uses an archive-box SVG icon that is visually distinct from any
+ * native Instagram control (Requirement 4.4).
+ *
+ * Requirements: 4.4, 4.5
+ */
+function injectSaveButton(postEl: Element): void {
+  if (postEl.querySelector('[data-saver-injected="true"]')) return; // Req 4.5
+
+  // Try multiple selectors for the action bar
+  const actionBar = postEl.querySelector<HTMLElement>(WITHIN_POST.actionBar);
+  if (!actionBar) return; // Skip if no action bar found
+
+  const btn = document.createElement("button");
+  btn.setAttribute("data-saver-injected", "true"); // Sentinel (Req 4.5)
+  btn.setAttribute("aria-label", "Save to Magpie archive");
+  btn.setAttribute("type", "button");
+  btn.className = "magpie-save-btn";
+  // Archive box SVG icon — distinct from any Instagram native icon (Req 4.4)
+  btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M20 3H4a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1v11a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V8a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1zm-1 15H5V8h14v10zM5 6V5h14v1H5zm7 4H9v2h3v2h2v-2h3v-2h-3V8h-2v2z"/></svg>`;
+  btn.style.cssText =
+    "background:none;border:none;cursor:pointer;padding:4px;display:inline-flex;align-items:center;opacity:0.7;color:#262626;";
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    openCollectionPicker(postEl);
+  });
+
+  actionBar.appendChild(btn);
 }
 
 // ── DOM Scanning ───────────────────────────────────────────────────────────

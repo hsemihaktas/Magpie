@@ -5,27 +5,28 @@
  *
  * Elements rendered (Requirements 15.2, 15.5, 15.6):
  * 1. Platform icon (Instagram or X SVG)
- * 2. Author avatar with fallback
+ * 2. Author avatar with fallback (inline SVG when no URL — Requirement 15.8)
  * 3. Author username
- * 4. Content text truncated to 280 chars
- * 5. Thumbnail (first media_urls item or thumbnail_url when available)
+ * 4. Content text with expand/collapse for >280 chars (Requirements 15.3, 15.4)
+ * 5. Thumbnail (thumbnail_url → first media_urls item → platform icon placeholder, Req 15.7)
  * 6. Collection name badge
  * 7. saved_at date formatted with toLocaleDateString()
- * 8. "Go to Original" link / disabled button
+ * 8. "Go to Original" link / disabled button (Requirement 15.9)
  */
 
+import { useState } from "react";
 import type { FeedPost } from "@/lib/types";
 
 // ── Platform icons ────────────────────────────────────────────────────────────
 
-function InstagramIcon() {
+function InstagramIcon({ className = "w-5 h-5" }: { className?: string }) {
   return (
     <svg
       aria-label="Instagram"
       role="img"
       viewBox="0 0 24 24"
       fill="none"
-      className="w-5 h-5"
+      className={className}
       xmlns="http://www.w3.org/2000/svg"
     >
       <rect
@@ -61,17 +62,40 @@ function InstagramIcon() {
   );
 }
 
-function XIcon() {
+function XIcon({
+  className = "w-5 h-5 text-black dark:text-white",
+}: {
+  className?: string;
+}) {
   return (
     <svg
       aria-label="X (Twitter)"
       role="img"
       viewBox="0 0 24 24"
       fill="currentColor"
-      className="w-5 h-5 text-black dark:text-white"
+      className={className}
       xmlns="http://www.w3.org/2000/svg"
     >
       <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.747l7.73-8.835L2.002 2.25h6.351l4.266 5.643L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
+    </svg>
+  );
+}
+
+// ── Generic avatar placeholder (Requirement 15.8) ─────────────────────────────
+
+function GenericAvatarIcon() {
+  return (
+    <svg
+      aria-label="User avatar"
+      role="img"
+      viewBox="0 0 36 36"
+      fill="none"
+      className="w-9 h-9 rounded-full bg-gray-200 flex-shrink-0"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <circle cx="18" cy="18" r="18" fill="#E5E7EB" />
+      <circle cx="18" cy="14" r="5" fill="#9CA3AF" />
+      <path d="M6 30c0-6.627 5.373-10 12-10s12 3.373 12 10" fill="#9CA3AF" />
     </svg>
   );
 }
@@ -80,12 +104,6 @@ function XIcon() {
 
 const CONTENT_MAX_LENGTH = 280;
 
-function truncate(text: string | null): string {
-  if (!text) return "";
-  if (text.length <= CONTENT_MAX_LENGTH) return text;
-  return text.slice(0, CONTENT_MAX_LENGTH) + "...";
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface PostCardProps {
@@ -93,6 +111,9 @@ interface PostCardProps {
 }
 
 export default function PostCard({ post }: PostCardProps) {
+  // Requirement 15.3, 15.4 — track expand state for long captions
+  const [expanded, setExpanded] = useState(false);
+
   // 5. Thumbnail: prefer thumbnail_url (added in task 21.4), fall back to first media_urls item
   const thumbnailUrl =
     (post as FeedPost & { thumbnail_url?: string | null }).thumbnail_url ??
@@ -106,33 +127,68 @@ export default function PostCard({ post }: PostCardProps) {
     day: "numeric",
   });
 
+  // Content text helpers
+  const contentText = post.content_text ?? "";
+  const isLong = contentText.length > CONTENT_MAX_LENGTH;
+  const displayText =
+    isLong && !expanded
+      ? contentText.slice(0, CONTENT_MAX_LENGTH) + "…"
+      : contentText;
+
   return (
     <article className="flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
-      {/* Thumbnail */}
-      {thumbnailUrl && (
-        <div className="relative w-full aspect-video bg-gray-100">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
+      {/* Thumbnail — always rendered; shows platform icon placeholder when no media (Req 15.7) */}
+      <div className="relative w-full aspect-video bg-gray-100">
+        {thumbnailUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={thumbnailUrl}
             alt="Post media"
             className="w-full h-full object-cover"
           />
-        </div>
-      )}
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gray-50">
+            {post.platform === "instagram" ? (
+              <InstagramIcon className="w-12 h-12 opacity-25" />
+            ) : (
+              <XIcon className="w-12 h-12 opacity-25 text-gray-400" />
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-col gap-3 p-4 flex-1">
         {/* Header: avatar + username + platform icon */}
         <div className="flex items-center gap-3">
-          {/* 2. Author avatar */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={post.author_avatar_url ?? "/default-avatar.png"}
-            alt={post.author_username ? `${post.author_username} avatar` : "User avatar"}
-            className="w-9 h-9 rounded-full object-cover bg-gray-200 flex-shrink-0"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src = "/default-avatar.png";
-            }}
-          />
+          {/* 2. Author avatar — inline SVG fallback when URL is missing (Req 15.8) */}
+          {post.author_avatar_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={post.author_avatar_url}
+              alt={
+                post.author_username
+                  ? `${post.author_username} avatar`
+                  : "User avatar"
+              }
+              className="w-9 h-9 rounded-full object-cover bg-gray-200 flex-shrink-0"
+              onError={(e) => {
+                // Replace broken image with the generic avatar icon via hidden + sibling trick
+                // by hiding this img and relying on the parent to re-render; simplest approach
+                // is to swap src to a transparent 1×1 pixel so onError doesn't loop
+                (e.currentTarget as HTMLImageElement).style.display = "none";
+                const sibling = (e.currentTarget as HTMLImageElement)
+                  .nextElementSibling as HTMLElement | null;
+                if (sibling) sibling.style.display = "block";
+              }}
+            />
+          ) : null}
+          {/* Shown when author_avatar_url is null, or revealed by onError above */}
+          <span
+            style={{ display: post.author_avatar_url ? "none" : "block" }}
+            aria-hidden={!!post.author_avatar_url}
+          >
+            <GenericAvatarIcon />
+          </span>
 
           <div className="flex-1 min-w-0">
             {/* 3. Author username */}
@@ -150,11 +206,22 @@ export default function PostCard({ post }: PostCardProps) {
           </span>
         </div>
 
-        {/* 4. Content text (truncated to 280 chars) */}
-        {post.content_text && (
-          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap break-words">
-            {truncate(post.content_text)}
-          </p>
+        {/* 4. Content text with expand/collapse (Requirements 15.3, 15.4) */}
+        {contentText && (
+          <div>
+            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap break-words">
+              {displayText}
+            </p>
+            {isLong && (
+              <button
+                type="button"
+                onClick={() => setExpanded((prev) => !prev)}
+                className="mt-1 text-sm text-indigo-600 hover:text-indigo-800 bg-transparent border-none p-0 cursor-pointer"
+              >
+                {expanded ? "Show less" : "Show more"}
+              </button>
+            )}
+          </div>
         )}
 
         {/* Footer: collection badge + action button */}
@@ -168,7 +235,7 @@ export default function PostCard({ post }: PostCardProps) {
             <span />
           )}
 
-          {/* 8. Go to Original */}
+          {/* 8. Go to Original (Req 15.9 — disabled when post_url is null) */}
           {post.post_url ? (
             <a
               href={post.post_url}
@@ -193,8 +260,20 @@ export default function PostCard({ post }: PostCardProps) {
             <button
               type="button"
               disabled
+              title="Original link unavailable"
               className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-400 cursor-not-allowed flex-shrink-0"
             >
+              <svg
+                className="w-3 h-3"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                aria-hidden="true"
+              >
+                <line x1="2" y1="2" x2="22" y2="22" />
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+              </svg>
               Go to Original
             </button>
           )}

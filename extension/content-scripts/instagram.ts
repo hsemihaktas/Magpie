@@ -11,6 +11,8 @@
  */
 
 import type { PostMetadata } from "../shared/types/domain";
+import { openModal, setOnSaveSuccessCallback } from "./modal";
+import { showToast } from "./toast";
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 
@@ -157,12 +159,63 @@ function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
 // ── Button Injection ───────────────────────────────────────────────────────
 
 /**
- * Stub — will be wired to metadata extraction and the Collection Picker Modal
- * in task 10.2.
+ * Opens the Collection Picker Modal for the post element that was clicked.
+ *
+ * Extracts metadata first — if the post URL cannot be resolved the save is
+ * aborted and an inline error toast is shown instead (Requirement 7.13).
+ *
+ * Before opening the modal, a one-shot callback is registered via
+ * `setOnSaveSuccessCallback`. The modal's `performSave` invokes this callback
+ * (with the resolved `collection_id`) after a successful save. The callback
+ * shows the platform-specific confirmation toast here, in the content script,
+ * keeping the modal decoupled from platform UI (Requirements 11.1–11.5, 11.7).
+ *
+ * @param postEl    The post card element whose save button was clicked.
+ * @param isUpdate  Pass `true` when re-opening after a "Change collection"
+ *                  click so the toast reads "Collection updated ✓" instead of
+ *                  "Saved to Magpie ✓" (Requirement 11.7).
+ *
+ * Requirements: 6.1, 7.12, 7.13, 11.4, 11.5, 11.7, 11.8
  */
-function openCollectionPicker(postEl: Element): void {
-  console.log("[Magpie] Save button clicked on:", postEl);
-  // Full implementation in task 10.2
+function openCollectionPicker(
+  postEl: Element,
+  isUpdate: boolean = false,
+): void {
+  const metadata = extractInstagramMetadata(postEl);
+
+  if (!metadata) {
+    // Requirement 7.13: abort save and surface an error to the user
+    console.error(
+      "[Magpie] Could not determine post URL. Try navigating directly to the post page.",
+    );
+    showToast({
+      message:
+        "Could not determine the post URL. Try navigating directly to the post page.",
+      platform: "instagram",
+    });
+    return;
+  }
+
+  // Register a one-shot callback so the modal notifies us on successful save.
+  // Each call overwrites the previous registration — only one modal is open at
+  // a time so this is safe.
+  setOnSaveSuccessCallback(() => {
+    // Requirement 11.7: first saves say "Saved to Magpie ✓"; re-saves after
+    // "Change collection" say "Collection updated ✓".
+    showToast({
+      message: isUpdate
+        ? "Collection updated \u2713"
+        : "Saved to Magpie \u2713",
+      platform: "instagram",
+      // Requirements 11.4, 11.5: "Change collection" button re-opens the
+      // modal for the exact same post, flagged as an update so the next
+      // successful save shows the "Collection updated ✓" message.
+      onChangeCollection: () => openCollectionPicker(postEl, true),
+    });
+  });
+
+  // Requirement 6.1: delegate to the modal which owns the full picker flow
+  openModal(metadata);
 }
 
 /**

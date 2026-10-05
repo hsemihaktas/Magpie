@@ -9,7 +9,12 @@
  */
 
 import type { Collection, PostMetadata } from "../shared/types/domain";
-import type { BackgroundResponse } from "../shared/types/messages";
+import type {
+  BackgroundResponse,
+  CreateCollectionResult,
+  OutboundMessage,
+  SavePostResult,
+} from "../shared/types/messages";
 
 // ── State types ──────────────────────────────────────────────────────────────
 
@@ -42,6 +47,12 @@ export type ModalPhase =
       meta: Partial<PostMetadata>;
       collections: Collection[];
       selectedId: string;
+      /**
+       * Set when transitioning from CREATING → SAVING.
+       * Carries the validated new collection name so `performSave` can issue
+       * CREATE_COLLECTION before SAVE_POST.
+       */
+      newCollectionName?: string;
     }
   | {
       phase: "SAVE_ERROR";
@@ -189,6 +200,7 @@ export function transition(state: ModalPhase, event: ModalEvent): ModalPhase {
           meta: state.meta,
           collections: state.collections,
           selectedId: "__new__",
+          newCollectionName: trimmed,
         };
       }
       return state;
@@ -1120,6 +1132,33 @@ function fetchCollections(): void {
 let currentState: ModalPhase = { phase: "CLOSED" };
 
 /**
+ * Optional callback invoked by `performSave` after a post is saved
+ * successfully.  Receives the `collection_id` that was actually used
+ * (including freshly-created collections) so callers can supply a
+ * "Change collection" shortcut in the toast.
+ *
+ * Register with `setOnSaveSuccessCallback`.
+ *
+ * Requirements: 6.4, 6.6
+ */
+let onSaveSuccessCallback: ((collectionId: string) => void) | null = null;
+
+/**
+ * Registers a callback that fires after a post has been saved successfully.
+ *
+ * The callback receives the `collection_id` used for the save so the caller
+ * (e.g. `instagram.ts`) can show a platform-specific toast with the correct
+ * "Change collection" context.
+ *
+ * Requirements: 6.4, 6.6
+ */
+export function setOnSaveSuccessCallback(
+  cb: (collectionId: string) => void,
+): void {
+  onSaveSuccessCallback = cb;
+}
+
+/**
  * Transitions the state machine with `event`, updates `currentState`, and
  * re-renders the modal DOM.
  *
@@ -1128,15 +1167,49 @@ let currentState: ModalPhase = { phase: "CLOSED" };
  * position and focus. The state is still updated, so SUBMIT_CREATE reads the
  * correct `inputValue`.
  *
- * Exported so task 11.3 can dispatch additional BSW-driven events.
+ * After a successful save (SAVING → CLOSED via SAVE_SUCCEEDED), the modal is
+ * removed immediately. The platform-specific content script (instagram.ts /
+ * x.ts) is responsible for showing the confirmation toast — it registers a
+ * callback via `setOnSaveSuccessCallback` and `performSave` invokes that
+ * callback after this dispatch call returns (Requirements 6.1, 11.3–11.5,
+ * 11.7).
+ *
+ * When the state first enters SAVING, `performSave` is called asynchronously
+ * to route the BSW message calls.
  */
 export function dispatch(event: ModalEvent): void {
+  const prevState = currentState;
   const prevPhase = currentState.phase;
   currentState = transition(currentState, event);
+
+  // After SAVING → CLOSED: remove the modal. The confirmation toast is shown
+  // by the content script through the onSaveSuccessCallback registered with
+  // setOnSaveSuccessCallback (Requirements 11.1–11.5, 11.7, 11.8).
+  if (event.type === "SAVE_SUCCEEDED" && prevState.phase === "SAVING") {
+    renderModal(currentState); // renders CLOSED (removes the modal)
+    return;
+  }
+
   // Skip re-render for in-place typing to preserve cursor position
   if (event.type === "INPUT_CHANGED" && currentState.phase === prevPhase)
     return;
   renderModal(currentState);
+
+  // When we first enter the SAVING phase, kick off the async BSW operations.
+  // Guard against re-entry: only fire when prevPhase was NOT already SAVING
+  // (dispatch(SAVE_FAILED) would otherwise re-trigger performSave in error
+  // recovery paths).
+  if (currentState.phase === "SAVING" && prevPhase !== "SAVING") {
+    performSave(currentState as ModalPhase & { phase: "SAVING" }).catch(
+      (err: unknown) => {
+        dispatch({
+          type: "SAVE_FAILED",
+          error:
+            err instanceof Error ? err.message : "Unexpected error during save",
+        });
+      },
+    );
+  }
 }
 
 /**
@@ -1152,4 +1225,127 @@ export function dispatch(event: ModalEvent): void {
 export function openModal(meta: Partial<PostMetadata>): void {
   dispatch({ type: "OPEN", meta });
   fetchCollections();
+}
+
+// ── BSW save operations ────────────────────────────────────────────────────
+
+/**
+ * Performs the async Background Service Worker message calls required when
+ * the state machine enters the SAVING phase.
+ *
+ * Two paths:
+ *
+ *  1. `selectedId === '__new__'` — sends CREATE_COLLECTION to obtain a real
+ *     collection UUID, then sends SAVE_POST with that UUID.
+ *     The new collection name is taken from `state.newCollectionName`, which
+ *     is always populated by the CREATING → SAVING transition (Requirement 6.6).
+ *
+ *  2. Any real UUID — sends SAVE_POST directly (Requirement 6.4).
+ *
+ * On success:
+ *  - Dispatches `SAVE_SUCCEEDED` (closes the modal, triggers the toast in
+ *    `dispatch`).
+ *  - Calls `onSaveSuccessCallback` with the resolved `collection_id`.
+ *
+ * On failure:
+ *  - Dispatches `SAVE_FAILED` with a human-readable error (Requirements 6.7,
+ *    6.8 — the modal remains open).
+ *
+ * Requirements: 6.2, 6.3, 6.4, 6.6, 6.7, 6.8, 6.9
+ */
+async function performSave(
+  state: ModalPhase & { phase: "SAVING" },
+): Promise<void> {
+  const { meta, selectedId, newCollectionName } = state;
+
+  // Guard: post_url is required to save (Requirement 7.13)
+  if (!meta.post_url) {
+    dispatch({
+      type: "SAVE_FAILED",
+      error: "Cannot save: post URL could not be determined.",
+    });
+    return;
+  }
+
+  let collectionId = selectedId;
+
+  // ── Path 1: create new collection first (Requirement 6.6) ─────────────
+  if (selectedId === "__new__") {
+    if (!newCollectionName) {
+      // Defensive guard — the CREATING → SAVING transition always sets this.
+      dispatch({
+        type: "SAVE_FAILED",
+        error: "Internal error: new collection name was not carried to SAVING.",
+      });
+      return;
+    }
+
+    let createResp: CreateCollectionResult;
+    try {
+      createResp = (await chrome.runtime.sendMessage({
+        type: "CREATE_COLLECTION",
+        payload: { name: newCollectionName },
+      } satisfies OutboundMessage)) as CreateCollectionResult;
+    } catch (err) {
+      // Requirement 6.8: create-collection failure → show error
+      dispatch({
+        type: "SAVE_FAILED",
+        error:
+          err instanceof Error
+            ? err.message
+            : "Failed to reach background service",
+      });
+      return;
+    }
+
+    if (!createResp.success) {
+      // Requirement 6.8: create-collection failure → show error
+      dispatch({ type: "SAVE_FAILED", error: createResp.error });
+      return;
+    }
+
+    collectionId = createResp.data.id;
+  }
+
+  // ── Path 2: save the post (Requirements 6.4, 6.7) ─────────────────────
+  let saveResp: SavePostResult;
+  try {
+    saveResp = (await chrome.runtime.sendMessage({
+      type: "SAVE_POST",
+      payload: {
+        post_url: meta.post_url,
+        collection_id: collectionId,
+        post_type: meta.post_type ?? "post",
+        platform: meta.platform ?? "instagram",
+        author_username: meta.author_username ?? null,
+        author_display_name: meta.author_display_name ?? null,
+        author_avatar_url: meta.author_avatar_url ?? null,
+        content_text: meta.content_text ?? null,
+        media_urls: meta.media_urls ?? null,
+        post_timestamp: meta.post_timestamp ?? null,
+        raw_metadata: meta.raw_metadata ?? null,
+      },
+    } satisfies OutboundMessage)) as SavePostResult;
+  } catch (err) {
+    // Requirement 6.7: save failure → show error, keep modal open
+    dispatch({
+      type: "SAVE_FAILED",
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to reach background service",
+    });
+    return;
+  }
+
+  if (saveResp.success) {
+    // Requirement 6.4: close modal on successful save
+    dispatch({ type: "SAVE_SUCCEEDED" });
+    // Notify the caller with the resolved collection_id so it can show
+    // the toast "Change collection" button with the correct context.
+    onSaveSuccessCallback?.(collectionId);
+  } else {
+    // Requirement 6.7: save failure → show error, keep modal open
+    dispatch({ type: "SAVE_FAILED", error: saveResp.error });
+  }
 }

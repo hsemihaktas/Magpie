@@ -1,11 +1,300 @@
 /**
  * X / Twitter Content Script (Phase 2)
  *
- * Responsibilities (to be implemented in task 18):
+ * Responsibilities:
  *  - Detect tweet, media tweet, and retweet elements in the DOM on x.com
- *  - Inject a save button using capture-phase click isolation to prevent native X interactions
- *  - Observe DOM mutations with MutationObserver to handle infinite-scroll feed updates
- *  - Extract tweet metadata and route save requests through the Background Service Worker
+ *  - Inject a save button using capture-phase click isolation to prevent
+ *    native X interactions (like, bookmark, retweet, reply) — Requirement 5.6
+ *  - Observe DOM mutations with MutationObserver to handle infinite-scroll
+ *    feed updates and SPA navigation
+ *  - Extract tweet metadata and route save requests through the
+ *    Collection Picker Modal → Background Service Worker
  *
  * Requirements: 5.1–5.6, 7.1–7.13
  */
+
+import type { PostMetadata } from "../shared/types/domain";
+import { openModal } from "./modal";
+
+// ── Utilities ──────────────────────────────────────────────────────────────
+
+/**
+ * Returns a debounced version of `fn` that fires at most once per `ms`
+ * milliseconds (trailing-edge). Subsequent calls within the window reset
+ * the timer.
+ */
+function debounce<A extends unknown[]>(
+  fn: (...args: A) => void,
+  ms: number,
+): (...args: A) => void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return function (...args: A): void {
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      fn(...args);
+    }, ms);
+  };
+}
+
+// ── DOM Selectors ──────────────────────────────────────────────────────────
+
+/**
+ * Top-level CSS selector that identifies a tweet / media tweet / retweet
+ * article element on x.com.  Uses `data-testid` because X's generated class
+ * names change with every deploy (Requirements 5.1, 5.2).
+ */
+const X_TWEET_SELECTOR = 'article[data-testid="tweet"]';
+
+/**
+ * Selectors scoped to the interior of a single tweet article element.
+ * All are based on `data-testid` attributes or structural HTML semantics so
+ * they survive X's frequent deploy-time class name churn
+ * (Requirements 5.1, 7.2).
+ */
+const WITHIN_TWEET = {
+  authorName: '[data-testid="User-Name"]',
+  authorAvatar: '[data-testid="Tweet-User-Avatar"] img',
+  tweetText: '[data-testid="tweetText"]',
+  tweetLink: 'a[href*="/status/"]',
+  timestamp: "time[datetime]",
+  photo: '[data-testid="tweetPhoto"] img',
+  video: "video source",
+  /** X action bar: contains reply, retweet, like, bookmark, share buttons. */
+  actionBar: 'div[role="group"]',
+} as const;
+
+// ── Metadata Extraction ────────────────────────────────────────────────────
+
+/**
+ * Extracts tweet metadata from a tweet article element using the
+ * `WITHIN_TWEET` selector map.
+ *
+ * Returns `null` if a tweet URL (a[href*="/status/"]) cannot be located —
+ * this signals the caller to abort the save (Requirement 7.13).
+ *
+ * All fields other than `post_url` are set to their zero/null value when the
+ * corresponding DOM element is absent — this function never throws
+ * (Requirement 7.12).
+ *
+ * Requirements: 5.5, 7.1–7.13
+ */
+function extractXMetadata(el: Element): Partial<PostMetadata> | null {
+  // 1. Locate tweet link — abort if missing (Requirement 7.13)
+  const tweetLinkEl = el.querySelector<HTMLAnchorElement>(
+    WITHIN_TWEET.tweetLink,
+  );
+  if (!tweetLinkEl?.href) return null;
+
+  const post_url = new URL(tweetLinkEl.href, window.location.origin).href;
+
+  // 2. Author name/handle
+  //    X renders the User-Name container with two spans:
+  //      • spans[0]  →  Display Name  (e.g. "Elon Musk")
+  //      • spans[1]  →  @handle       (e.g. "@elonmusk")
+  const authorNameEl = el.querySelector(WITHIN_TWEET.authorName);
+  const spans = authorNameEl?.querySelectorAll("span");
+  const author_display_name = spans?.[0]?.textContent?.trim() ?? null;
+  const author_username =
+    spans?.[1]?.textContent?.replace("@", "").trim() ?? null;
+
+  // 3. Avatar URL (excluded from media_urls)
+  const avatarEl = el.querySelector<HTMLImageElement>(
+    WITHIN_TWEET.authorAvatar,
+  );
+  const author_avatar_url = avatarEl?.src ?? null;
+
+  // 4. Tweet text
+  const textEl = el.querySelector(WITHIN_TWEET.tweetText);
+  const content_text = textEl?.textContent?.trim() ?? null;
+
+  // 5. Timestamp (ISO 8601 from the datetime attribute)
+  const timeEl = el.querySelector<HTMLTimeElement>(WITHIN_TWEET.timestamp);
+  const post_timestamp = timeEl?.getAttribute("datetime") ?? null;
+
+  // 6. Media URLs — photos and video sources, excluding the author avatar
+  const photoEls = Array.from(
+    el.querySelectorAll<HTMLImageElement>(WITHIN_TWEET.photo),
+  );
+  const videoEls = Array.from(
+    el.querySelectorAll<HTMLSourceElement>(WITHIN_TWEET.video),
+  );
+  const media_urls: string[] = [
+    ...photoEls.map((i) => i.src).filter((s) => s && s !== author_avatar_url),
+    ...videoEls.map((v) => v.src).filter((s) => !!s),
+  ];
+
+  return {
+    post_url,
+    post_type: "tweet",
+    platform: "x",
+    author_username,
+    author_display_name,
+    author_avatar_url,
+    content_text,
+    media_urls,
+    post_timestamp,
+    raw_metadata: {
+      page_url: window.location.href,
+      extracted_at: new Date().toISOString(),
+    },
+  };
+}
+
+// ── Collection Picker ──────────────────────────────────────────────────────
+
+/**
+ * Opens the Collection Picker Modal for the given tweet element.
+ *
+ * Extracts metadata first; if `extractXMetadata` returns `null` (no
+ * tweet URL found) the save is aborted per Requirement 7.13.
+ *
+ * On a successful save the modal's internal dispatch automatically shows a
+ * platform-matched Toast_Notification (X dark theme) with a "Change
+ * collection" option that re-opens the modal for the same metadata
+ * (Requirements 11.1, 11.2, 11.3).
+ *
+ * Requirements: 5.6, 7.12, 7.13, 11.1–11.3
+ */
+function openXCollectionPicker(tweetEl: Element): void {
+  const meta = extractXMetadata(tweetEl);
+  if (!meta) {
+    // Requirement 7.13: abort when post_url cannot be extracted
+    console.warn(
+      "[Magpie] Could not determine the tweet URL. " +
+        "Try navigating directly to the tweet page.",
+    );
+    return;
+  }
+  openModal(meta);
+}
+
+// ── Button Injection ───────────────────────────────────────────────────────
+
+/**
+ * Injects a Magpie save button into the action bar of a tweet element.
+ * Idempotent: skips immediately if a button with `data-saver-injected`
+ * is already present (Requirement 5.1).
+ *
+ * The click listener is attached with `{ capture: true }` so it fires in the
+ * capture phase — before any of X's own bubble-phase handlers on the same
+ * element.  `e.stopImmediatePropagation()` then prevents those handlers from
+ * running, ensuring that clicking Save never triggers X's native like,
+ * bookmark, retweet, or reply actions (Requirement 5.6).
+ *
+ * Requirements: 5.1, 5.4, 5.6
+ */
+function injectXSaveButton(tweetEl: Element): void {
+  if (tweetEl.querySelector('[data-saver-injected="true"]')) return; // Req 5.1
+
+  const actionBar = tweetEl.querySelector<HTMLElement>(WITHIN_TWEET.actionBar);
+  if (!actionBar) return; // skip if action bar not yet rendered
+
+  const btn = document.createElement("button");
+  btn.setAttribute("data-saver-injected", "true"); // sentinel (Req 5.1)
+  btn.setAttribute("aria-label", "Save to Magpie archive");
+  btn.setAttribute("type", "button");
+  btn.className = "magpie-save-btn magpie-save-btn--x";
+
+  // Archive-box SVG — visually distinct from any native X icon (Req 5.4)
+  btn.innerHTML =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" ` +
+    `width="18" height="18" fill="currentColor" aria-hidden="true">` +
+    `<path d="M20 3H4a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1v11a1 1 0 0 0 1 1h14` +
+    `a1 1 0 0 0 1-1V8a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1zm-1 15H5V8h14v10z` +
+    `M5 6V5h14v1H5zm7 4H9v2h3v2h2v-2h3v-2h-3V8h-2v2z"/></svg>`;
+
+  // Match X's muted icon colour; preserve native button spacing
+  btn.style.cssText =
+    "background:none;border:none;cursor:pointer;padding:0 8px;" +
+    "display:inline-flex;align-items:center;justify-content:center;" +
+    "opacity:0.7;color:#71767b;transition:opacity 0.15s;";
+
+  // Capture-phase listener (Requirement 5.6):
+  //  - fires before X's bubble-phase like/bookmark/retweet handlers
+  //  - stopImmediatePropagation blocks those handlers on the same element
+  btn.addEventListener(
+    "click",
+    (e) => {
+      e.stopImmediatePropagation(); // block X's native event handlers
+      e.preventDefault();
+      openXCollectionPicker(tweetEl);
+    },
+    { capture: true }, // Requirement 5.6
+  );
+
+  actionBar.appendChild(btn);
+}
+
+// ── DOM Scanning ───────────────────────────────────────────────────────────
+
+/**
+ * Queries `root` for all tweet article elements and calls
+ * `injectXSaveButton` on each.  Also checks whether `root` itself matches
+ * the tweet selector so newly-added top-level tweet nodes are not missed.
+ *
+ * Requirements: 5.1, 5.2
+ */
+function scanAndInject(root: Element): void {
+  // Check root itself first (handles newly-added top-level tweet articles)
+  if (root.matches(X_TWEET_SELECTOR)) {
+    injectXSaveButton(root);
+    return;
+  }
+
+  // Scan all matching descendants
+  root
+    .querySelectorAll(X_TWEET_SELECTOR)
+    .forEach((el) => injectXSaveButton(el));
+}
+
+// ── MutationObserver ───────────────────────────────────────────────────────
+
+const DEBOUNCE_MS = 100;
+
+/**
+ * Debounced MutationObserver callback.
+ *
+ * Two-pass strategy on every mutation batch:
+ *  1. Scan `addedNodes` from each record for newly inserted tweet elements.
+ *  2. Re-check every document-level tweet match so buttons stripped by X's
+ *     SPA reconciliation are immediately re-injected (Requirement 5.3).
+ *
+ * Wrapped in try/catch so a single runtime error cannot halt mutation
+ * handling for subsequent DOM changes.
+ *
+ * Requirements: 5.1, 5.2, 5.3
+ */
+const observer = new MutationObserver(
+  debounce((mutations: MutationRecord[]) => {
+    try {
+      // Pass 1: inject into newly added nodes
+      for (const mutation of mutations) {
+        Array.from(mutation.addedNodes).forEach((node) => {
+          if (node.nodeType !== Node.ELEMENT_NODE) return;
+          scanAndInject(node as Element);
+        });
+      }
+
+      // Pass 2: re-inject on any tweet whose button was stripped by X's SPA
+      // re-render (X may remove and re-add article elements during client-side
+      // route transitions without a full page load)
+      document.querySelectorAll(X_TWEET_SELECTOR).forEach((el) => {
+        if (!el.querySelector('[data-saver-injected="true"]')) {
+          injectXSaveButton(el);
+        }
+      });
+    } catch (err) {
+      // Swallow errors so future mutations are still handled
+      console.error("[Magpie] MutationObserver callback error:", err);
+    }
+  }, DEBOUNCE_MS),
+);
+
+observer.observe(document.body, { childList: true, subtree: true });
+
+// ── Initial Scan ───────────────────────────────────────────────────────────
+
+// Inject buttons on any tweet elements already in the DOM when the
+// content script first loads (Requirement 5.1)
+scanAndInject(document.body);

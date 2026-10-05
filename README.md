@@ -81,7 +81,7 @@ extension/
   manifest.json                -- MV3, permissions, content scripts       [DONE]
   package.json + build.mjs     -- esbuild TypeScript toolchain             [DONE]
   tsconfig.json                -- Strict TS, ES2020                        [DONE]
-  background/service-worker.ts -- Auth + JWT + API calls                   [PENDING]
+  background/service-worker.ts          -- JWT storage with sync/local fallback [DONE]
   content-scripts/instagram.ts -- Instagram button injection + scraping    [PENDING]
   content-scripts/x.ts         -- X/Twitter injection                      [PENDING]
   popup/popup.html             -- Base HTML shell                           [DONE]
@@ -96,7 +96,7 @@ web-viewer/
   app/layout.tsx               -- Root layout with Tailwind                [DONE]
   app/page.tsx                 -- Redirect to /feed or /login              [DONE]
   app/login/page.tsx             -- Google OAuth login page [DONE]
-  app/feed/page.tsx            -- Main feed with filter + search           [PENDING]
+  app/feed/page.tsx              -- Feed server component + queries [DONE]
   app/auth/callback/route.ts   -- OAuth callback handler [DONE]
   components/                  -- PostCard, CollectionFilter, SearchBar    [PENDING]
   lib/supabase.ts              -- Server/middleware/browser helpers        [DONE]
@@ -105,9 +105,9 @@ web-viewer/
 supabase/
   migrations/001_collections_table.sql -- collections table + pgcrypto    [DONE]
   migrations/002_saved_posts_table.sql -- saved_posts + UNIQUE + GIN      [DONE]
-  functions/save-post/index.ts         -- Upsert + rate limit             [PENDING]
-  functions/manage-collection/index.ts -- CRUD + rate limit               [PENDING]
-  functions/shared/rate-limit.ts       -- Deno KV sliding window          [PENDING]
+  functions/save-post/index.ts          -- JWT verify + upsert (partial) [DONE]
+  functions/manage-collection/index.ts -- CRUD (list+create done) [DONE]
+  functions/shared/rate-limit.ts       -- Deno KV sliding window [DONE]
 ```
 
 ## Setup
@@ -148,3 +148,5 @@ Full planning documents in .kiro/specs/social-content-saver/ (local only, not tr
 - requirements.md -- 19 requirements with EARS-format acceptance criteria
 - design.md -- System architecture, component design, 14 correctness properties
 - tasks.md -- 21 implementation tasks with property-based test coverage
+
+  migrations/004_storage_bucket.sql    -- thumbnails bucket creation        [DONE]

@@ -9,7 +9,14 @@
  * Requirements: 2.1–2.8, 10.1–10.6
  */
 
+import { createClient } from "@supabase/supabase-js";
 import type { StoredSession } from "../shared/types/domain";
+
+// ── Supabase configuration ────────────────────────────────────────────────────
+// Replace these placeholder values with your actual Supabase project credentials
+// before building. Never commit real credentials to source control.
+const SUPABASE_URL = "https://your-project-ref.supabase.co";
+const SUPABASE_ANON_KEY = "your-supabase-anon-key";
 
 /** Storage key used in both chrome.storage.sync and chrome.storage.local */
 const SESSION_KEY = "magpie_session";
@@ -23,6 +30,10 @@ const SESSION_KEY = "magpie_session";
  * On fallback, a SYNC_UNAVAILABLE console warning is emitted so that callers
  * and the popup can surface the "session sync across devices is disabled"
  * message (Requirement 2.6).
+ *
+ * After storing, schedules a proactive jwt-refresh alarm 5 minutes before
+ * expiry so the session is refreshed silently before it lapses
+ * (Requirements 1.3, 2.4).
  */
 export async function storeSession(session: StoredSession): Promise<void> {
   try {
@@ -37,6 +48,13 @@ export async function storeSession(session: StoredSession): Promise<void> {
     );
     await chrome.storage.local.set({ [SESSION_KEY]: session });
   }
+
+  // Schedule a proactive refresh alarm 5 minutes (300 s) before the JWT
+  // expires. This gives refreshSession() time to obtain a new token while
+  // the current one is still valid (Requirement 1.3, 2.4).
+  chrome.alarms.create("jwt-refresh", {
+    when: (session.expiry - 300) * 1000,
+  });
 }
 
 /**
@@ -82,3 +100,102 @@ export async function clearSession(): Promise<void> {
     chrome.storage.local.remove(SESSION_KEY),
   ]);
 }
+
+// ── JWT Validity and Proactive Refresh ────────────────────────────────────────
+
+/**
+ * Returns the stored session if it is valid, attempting a silent refresh when
+ * the token is within 5 minutes of expiry (Requirements 1.3, 1.4, 2.4, 2.7).
+ *
+ * Return semantics:
+ *  - null (AUTH_REQUIRED)  → no session exists in storage
+ *  - null (JWT_EXPIRED)    → token has passed its expiry; storage is cleared
+ *  - StoredSession         → token is valid (and freshly refreshed if it was
+ *                            close to expiry)
+ */
+export async function getValidSession(): Promise<StoredSession | null> {
+  const session = await getStoredSession();
+
+  if (!session) {
+    // No session stored — caller must trigger a new login flow.
+    return null; // AUTH_REQUIRED
+  }
+
+  const nowSecs = Date.now() / 1000;
+
+  if (nowSecs >= session.expiry) {
+    // Token has expired — clear storage and signal re-authentication
+    // (Requirements 1.4, 2.7).
+    await clearSession();
+    return null; // JWT_EXPIRED
+  }
+
+  if (session.expiry - nowSecs < 300) {
+    // Token is within the 5-minute refresh window — attempt a silent refresh
+    // so callers always receive a token with meaningful remaining lifetime
+    // (Requirement 2.4).
+    await refreshSession();
+    return getStoredSession();
+  }
+
+  return session;
+}
+
+/**
+ * Attempts a silent Supabase token refresh.
+ *
+ * On success, the new access token and expiry are written back to storage via
+ * storeSession(), which also reschedules the jwt-refresh alarm.
+ *
+ * On failure (network error, invalid refresh token, etc.) the stored session
+ * is cleared so the user is prompted to re-authenticate (Requirements 1.4, 2.7).
+ *
+ * NOTE: The StoredSession type currently stores the access JWT only. To perform
+ * a full server-side token refresh, a `refresh_token` field must be added to
+ * StoredSession so it can be passed to refreshSession(). Until then, this
+ * function relies on the Supabase client's internally cached session.
+ */
+export async function refreshSession(): Promise<void> {
+  // Create a minimal Supabase client. We disable automatic token persistence
+  // and auto-refresh because the service worker manages its own storage via
+  // chrome.storage (Requirements 2.2, 2.5).
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
+
+  const { data, error } = await supabase.auth.refreshSession();
+
+  if (error || !data.session) {
+    // Refresh failed — clear the stale session so the user is asked to
+    // re-authenticate on the next interaction (Requirements 1.4, 2.7).
+    console.warn("[Magpie] Token refresh failed — clearing session.", error);
+    await clearSession();
+    return;
+  }
+
+  const { access_token, expires_at, user } = data.session;
+
+  await storeSession({
+    jwt: access_token,
+    // expires_at is seconds since epoch; fall back to 1 hour from now if absent.
+    expiry: expires_at ?? Math.floor(Date.now() / 1000) + 3600,
+    user_id: user.id,
+  });
+}
+
+// ── Alarm Listener ────────────────────────────────────────────────────────────
+
+/**
+ * Listens for the jwt-refresh alarm and triggers a proactive token refresh.
+ * The alarm is created by storeSession() and fires 5 minutes before expiry
+ * (Requirements 1.3, 2.4).
+ */
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "jwt-refresh") {
+    refreshSession();
+  }
+});

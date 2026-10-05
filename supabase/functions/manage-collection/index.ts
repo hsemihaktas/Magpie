@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkRateLimit, rateLimitResponse } from "../shared/rate-limit.ts";
 
 const VALID_OPERATIONS = ["list", "create", "rename", "delete"] as const;
 type Operation = (typeof VALID_OPERATIONS)[number];
@@ -29,7 +30,24 @@ serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ error: "Method not allowed" }, 405);
   }
 
-  // ── Step 1: Extract JWT from Authorization header ──────────────────────────
+  // ── Step 1: Rate limiting (Requirements 18.2, 18.3, 18.4) ────────────────
+  // Extract raw JWT if present (may be absent for unauthenticated requests).
+  // Fall back to forwarded IP, then a generic sentinel so every request gets
+  // a bucket even before auth is verified.
+  const rawAuthHeader = req.headers.get("Authorization");
+  const rawJwt = rawAuthHeader?.startsWith("Bearer ")
+    ? rawAuthHeader.replace("Bearer ", "")
+    : null;
+  const rateLimitKey = `manage-collection:${rawJwt || req.headers.get("x-forwarded-for") || "unknown"}`;
+  const rateLimitResult = await checkRateLimit(rateLimitKey, {
+    maxRequests: 30,
+    windowSeconds: 60,
+  });
+  if (!rateLimitResult.allowed) {
+    return rateLimitResponse(rateLimitResult.retryAfterSeconds);
+  }
+
+  // ── Step 2: Extract JWT from Authorization header ──────────────────────────
   // Requirement 9.2: verify JWT before performing any operation
   const authHeader = req.headers.get("Authorization");
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -40,7 +58,7 @@ serve(async (req: Request): Promise<Response> => {
   }
   const jwt = authHeader.replace("Bearer ", "");
 
-  // ── Step 2: Verify JWT via Supabase Auth ───────────────────────────────────
+  // ── Step 3: Verify JWT via Supabase Auth ───────────────────────────────────
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -137,14 +155,72 @@ serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ collection }, 201);
   }
 
-  // ── rename — placeholder until task 3.2 ──────────────────────────────────
+  // ── rename ─────────────────────────────────────────────────────────────────
   if (op === "rename") {
-    return jsonResponse({ message: "not implemented" }, 200);
+    const { collection_id } = body as { collection_id?: unknown };
+
+    // Requirement 9.10: collection_id is required for rename → HTTP 400 if absent
+    if (!collection_id) {
+      return jsonResponse({ error: "collection_id is required" }, 400);
+    }
+
+    // Requirement 9.9: new name must be 1–255 non-whitespace chars → HTTP 400 if invalid
+    if (!isValidName(name)) {
+      return jsonResponse(
+        { error: "name must be 1-255 non-empty characters" },
+        400,
+      );
+    }
+
+    // Requirement 9.5: UPDATE name WHERE id = collection_id AND user_id = jwt user
+    // Requirement 9.8: if no row matched (wrong owner or non-existent) → HTTP 403
+    const { data: collection, error: updateError } = await supabase
+      .from("collections")
+      .update({ name: (name as string).trim() })
+      .eq("id", collection_id as string)
+      .eq("user_id", userId)
+      .select()
+      .single();
+
+    if (updateError || !collection) {
+      // PGRST116 = 0 rows returned by .single() — ownership check failed
+      return jsonResponse(
+        { error: "Collection not found or access denied" },
+        403,
+      );
+    }
+
+    return jsonResponse({ collection }, 200);
   }
 
-  // ── delete — placeholder until task 3.2 ──────────────────────────────────
+  // ── delete ─────────────────────────────────────────────────────────────────
   if (op === "delete") {
-    return jsonResponse({ message: "not implemented" }, 200);
+    const { collection_id } = body as { collection_id?: unknown };
+
+    // Requirement 9.10: collection_id is required for delete → HTTP 400 if absent
+    if (!collection_id) {
+      return jsonResponse({ error: "collection_id is required" }, 400);
+    }
+
+    // Requirement 9.6: DELETE WHERE id = collection_id AND user_id = jwt user
+    // Requirement 9.8: if no row deleted (wrong owner or non-existent) → HTTP 403
+    const { data: deleted, error: deleteError } = await supabase
+      .from("collections")
+      .delete()
+      .eq("id", collection_id as string)
+      .eq("user_id", userId)
+      .select()
+      .single();
+
+    if (deleteError || !deleted) {
+      // PGRST116 = 0 rows returned by .single() — ownership check failed
+      return jsonResponse(
+        { error: "Collection not found or access denied" },
+        403,
+      );
+    }
+
+    return jsonResponse({ deleted_id: collection_id }, 200);
   }
 
   // Unreachable, but satisfies TypeScript exhaustiveness

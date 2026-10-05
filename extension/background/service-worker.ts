@@ -10,7 +10,18 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
-import type { StoredSession } from "../shared/types/domain";
+import type {
+  StoredSession,
+  SavePostRequest,
+  SavePostResponse,
+  ManageCollectionRequest,
+  ManageCollectionResponse,
+} from "../shared/types/domain";
+import type {
+  OutboundMessage,
+  BackgroundResponse,
+  ErrorCode,
+} from "../shared/types/messages";
 
 // ── Supabase configuration ────────────────────────────────────────────────────
 // Replace these placeholder values with your actual Supabase project credentials
@@ -199,3 +210,378 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     refreshSession();
   }
 });
+
+// ── Edge Function Callers ─────────────────────────────────────────────────────
+
+/** Base URL for all Edge Function endpoints */
+const EDGE_FUNCTION_BASE = `${SUPABASE_URL}/functions/v1`;
+
+/**
+ * Converts a non-OK HTTP Response into a typed BackgroundResponse failure.
+ *
+ * HTTP 429 is mapped to the `RATE_LIMITED` error code. The user-facing error
+ * message is built from the `Retry-After` response header so the caller knows
+ * exactly how many seconds to wait before retrying (Requirement 18.6).
+ *
+ * Other mappings:
+ *  - 401 → AUTH_REQUIRED  (JWT rejected server-side)
+ *  - other 4xx/5xx → API_ERROR
+ *
+ * The function intentionally does NOT read the response body — callers that
+ * need the body for success responses should read it after this guard returns.
+ *
+ * Requirements: 10.6, 18.6
+ */
+export function mapHttpError<T>(response: Response): BackgroundResponse<T> {
+  if (response.status === 429) {
+    const retryAfter = response.headers.get("Retry-After") ?? "60";
+    return {
+      success: false,
+      error: `Too many requests. Please wait ${retryAfter} seconds before trying again.`,
+      code: "RATE_LIMITED",
+    };
+  }
+
+  if (response.status === 401) {
+    return {
+      success: false,
+      error: "Authentication required. Please log in.",
+      code: "AUTH_REQUIRED",
+    };
+  }
+
+  return {
+    success: false,
+    error: `API error: HTTP ${response.status}`,
+    code: "API_ERROR",
+  };
+}
+
+/**
+ * Calls the save-post Edge Function to create or update a saved post.
+ *
+ * HTTP error mapping (Requirement 10.6):
+ *  - 401 → AUTH_REQUIRED  (JWT rejected server-side)
+ *  - 429 → RATE_LIMITED   (rate limit exceeded; Retry-After header read)
+ *  - other 4xx/5xx → API_ERROR
+ * Network failures produce NETWORK_ERROR (Requirements 10.2, 10.3).
+ */
+export async function callSavePost(
+  payload: SavePostRequest,
+  jwt: string,
+): Promise<BackgroundResponse<SavePostResponse>> {
+  try {
+    const response = await fetch(`${EDGE_FUNCTION_BASE}/save-post`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${jwt}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      return mapHttpError<SavePostResponse>(response);
+    }
+
+    const body = (await response.json()) as SavePostResponse;
+    return { success: true, data: body };
+  } catch {
+    return {
+      success: false,
+      error: "Network request to save-post failed",
+      code: "NETWORK_ERROR",
+    };
+  }
+}
+
+/**
+ * Calls the manage-collection Edge Function to list, create, rename, or
+ * delete collections.
+ *
+ * Error code mapping is identical to callSavePost — including RATE_LIMITED
+ * for HTTP 429 with Retry-After header parsing (Requirements 10.2, 10.3, 10.6, 18.6).
+ */
+export async function callManageCollection(
+  request: ManageCollectionRequest,
+  jwt: string,
+): Promise<BackgroundResponse<ManageCollectionResponse>> {
+  try {
+    const response = await fetch(`${EDGE_FUNCTION_BASE}/manage-collection`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${jwt}`,
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      return mapHttpError<ManageCollectionResponse>(response);
+    }
+
+    const body = (await response.json()) as ManageCollectionResponse;
+    return { success: true, data: body };
+  } catch {
+    return {
+      success: false,
+      error: "Network request to manage-collection failed",
+      code: "NETWORK_ERROR",
+    };
+  }
+}
+
+// ── Google OAuth Login ────────────────────────────────────────────────────────
+
+/**
+ * Initiates the Google OAuth flow via `chrome.identity.launchWebAuthFlow`.
+ *
+ * Flow:
+ *  1. Build the Supabase Google OAuth authorize URL, passing the extension's
+ *     managed redirect URL as `redirect_to`.
+ *  2. Launch the interactive Chrome OAuth popup.
+ *  3. Parse `access_token` and `expires_in` from the redirect URL fragment.
+ *  4. Validate the token and retrieve the user's `id` via
+ *     `supabase.auth.getUser(accessToken)`.
+ *  5. Persist the session via `storeSession()`.
+ *
+ * On user cancellation `{ success: true, data: null }` is returned so the
+ * popup silently returns to the login view without displaying an error
+ * (Requirement 12.5).
+ *
+ * Requirements: 1.1, 1.2, 1.6, 2.1, 2.2, 12.2, 12.4, 12.5
+ */
+async function initiateLogin(): Promise<
+  BackgroundResponse<StoredSession | null>
+> {
+  // chrome.identity provides a stable extension-specific redirect URL.
+  const redirectUrl = chrome.identity.getRedirectURL();
+
+  const authUrl = new URL(`${SUPABASE_URL}/auth/v1/authorize`);
+  authUrl.searchParams.set("provider", "google");
+  authUrl.searchParams.set("redirect_to", redirectUrl);
+
+  try {
+    const responseUrl = await new Promise<string>((resolve, reject) => {
+      chrome.identity.launchWebAuthFlow(
+        { url: authUrl.toString(), interactive: true },
+        (url) => {
+          if (chrome.runtime.lastError) {
+            reject(
+              new Error(
+                chrome.runtime.lastError.message ?? "OAuth flow failed",
+              ),
+            );
+          } else if (!url) {
+            reject(new Error("No response URL returned from OAuth flow"));
+          } else {
+            resolve(url);
+          }
+        },
+      );
+    });
+
+    // Supabase encodes tokens in the URL fragment:
+    // #access_token=...&expires_in=...&token_type=bearer&...
+    const hashParams = new URLSearchParams(
+      new URL(responseUrl).hash.substring(1),
+    );
+    const accessToken = hashParams.get("access_token");
+    const expiresIn = hashParams.get("expires_in");
+
+    if (!accessToken) {
+      return {
+        success: false,
+        error: "No access token received from OAuth provider",
+        code: "AUTH_REQUIRED",
+      };
+    }
+
+    // Validate the token and retrieve the canonical user_id.
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false,
+      },
+    });
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser(accessToken);
+
+    if (userError || !user) {
+      return {
+        success: false,
+        error: userError?.message ?? "Unable to verify user identity",
+        code: "API_ERROR",
+      };
+    }
+
+    // Requirement 1.3: expiry must not exceed 3600 s; fall back to 1 h if
+    // expires_in is missing from the fragment.
+    const expiry = expiresIn
+      ? Math.floor(Date.now() / 1000) + parseInt(expiresIn, 10)
+      : Math.floor(Date.now() / 1000) + 3600;
+
+    const session: StoredSession = {
+      jwt: accessToken,
+      expiry,
+      user_id: user.id,
+    };
+
+    await storeSession(session);
+
+    return { success: true, data: session };
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Authentication flow failed";
+
+    // Requirement 12.5: a cancelled OAuth flow is not an error that should be
+    // surfaced; return a null-session success so the popup stays on the login
+    // view without showing an error message.
+    if (
+      message.includes("cancelled") ||
+      message.includes("canceled") ||
+      message.includes("did not approve") ||
+      message.includes("user gesture")
+    ) {
+      return { success: true, data: null };
+    }
+
+    // Requirement 1.6: surface genuine provider-unavailability errors.
+    return { success: false, error: message, code: "UNKNOWN_ERROR" };
+  }
+}
+
+// ── Message Router ────────────────────────────────────────────────────────────
+
+/**
+ * Routes an `OutboundMessage` from a Content Script or the Popup to the
+ * appropriate handler and returns a typed `BackgroundResponse`.
+ *
+ * Auth-free messages (GET_SESSION_STATUS, INITIATE_LOGIN, LOGOUT) are handled
+ * immediately. Every other message type calls `getValidSession()` first and
+ * returns `AUTH_REQUIRED` when no valid session is available, ensuring the BSW
+ * never calls an Edge Function without a JWT (Requirement 10.5).
+ *
+ * Requirements: 10.1, 10.4, 10.5, 10.6
+ */
+export async function handleMessage(
+  message: OutboundMessage,
+): Promise<BackgroundResponse<unknown>> {
+  // ── Auth-free messages ────────────────────────────────────────────────────
+
+  if (message.type === "GET_SESSION_STATUS") {
+    // Returns the current session (including null when unauthenticated).
+    const session = await getValidSession();
+    return { success: true, data: session };
+  }
+
+  if (message.type === "INITIATE_LOGIN") {
+    return initiateLogin();
+  }
+
+  if (message.type === "LOGOUT") {
+    await clearSession();
+    return { success: true, data: null };
+  }
+
+  // ── Auth-required messages ────────────────────────────────────────────────
+  // All remaining message types require a valid, non-expired JWT before any
+  // Edge Function call is made (Requirement 10.5).
+
+  const session = await getValidSession();
+
+  if (!session) {
+    return {
+      success: false,
+      error: "Authentication required. Please log in to continue.",
+      code: "AUTH_REQUIRED",
+    };
+  }
+
+  const { jwt } = session;
+
+  switch (message.type) {
+    case "GET_COLLECTIONS":
+      return callManageCollection({ operation: "list" }, jwt);
+
+    case "SAVE_POST":
+      return callSavePost(message.payload, jwt);
+
+    case "CREATE_COLLECTION":
+      return callManageCollection(
+        { operation: "create", name: message.payload.name },
+        jwt,
+      );
+
+    case "RENAME_COLLECTION": {
+      const { collection_id, name } = message.payload;
+      return callManageCollection(
+        { operation: "rename", collection_id, name },
+        jwt,
+      );
+    }
+
+    case "DELETE_COLLECTION": {
+      const { collection_id } = message.payload;
+      return callManageCollection({ operation: "delete", collection_id }, jwt);
+    }
+
+    case "UPDATE_POST_COLLECTION": {
+      const { post_url, collection_id } = message.payload;
+      // The save-post Edge Function upserts on (user_id, post_url), so this
+      // targets the existing record and updates its collection_id
+      // (Requirement 11.5). The Edge Function validates only post_url and
+      // collection_id, so the remaining SavePostRequest fields are passed as
+      // empty strings to satisfy the TypeScript interface.
+      return callSavePost(
+        { post_url, collection_id, post_type: "", platform: "" },
+        jwt,
+      );
+    }
+
+    default: {
+      // TypeScript exhaustiveness check — unreachable at runtime when all
+      // OutboundMessage variants are handled above.
+      const _exhaustive: never = message;
+      void _exhaustive;
+      return {
+        success: false,
+        error: "Unknown message type",
+        code: "UNKNOWN_ERROR",
+      };
+    }
+  }
+}
+
+// ── Message Listener Registration ─────────────────────────────────────────────
+
+/**
+ * Registers the runtime message listener so Content Scripts and the Extension
+ * Popup can communicate with the Background Service Worker.
+ *
+ * Returning `true` keeps the message channel open while the async
+ * `handleMessage` promise resolves — required by the Chrome MV3 message
+ * passing contract (Requirement 10.1).
+ */
+chrome.runtime.onMessage.addListener(
+  (
+    message: OutboundMessage,
+    _sender: chrome.runtime.MessageSender,
+    sendResponse: (response: BackgroundResponse<unknown>) => void,
+  ) => {
+    handleMessage(message as OutboundMessage)
+      .then(sendResponse)
+      .catch(() =>
+        sendResponse({
+          success: false,
+          error: "Unexpected error in message handler",
+          code: "UNKNOWN_ERROR",
+        }),
+      );
+    return true; // Required to keep channel open for async response
+  },
+);

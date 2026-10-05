@@ -82,13 +82,13 @@ extension/
   package.json + build.mjs     -- esbuild TypeScript toolchain             [DONE]
   tsconfig.json                -- Strict TS, ES2020                        [DONE]
   background/service-worker.ts          -- JWT storage with sync/local fallback [DONE]
-  content-scripts/instagram.ts -- Instagram button injection + scraping    [PENDING]
-  content-scripts/x.ts         -- X/Twitter injection                      [PENDING]
+  content-scripts/instagram.ts -- Instagram button injection + scraping    [DONE]
+  content-scripts/x.ts         -- X/Twitter injection                      [DONE]
   popup/popup.html             -- Base HTML shell                           [DONE]
-  popup/popup.ts               -- Login + collections UI                   [PENDING]
+  popup/popup.ts               -- Login + collections UI                   [DONE]
   shared/types/domain.ts       -- Collection, SavedPost, PostMetadata...   [DONE]
-  shared/types/messages.ts     -- Message protocol + ErrorCode             [PENDING]
-  styles/modal.css + toast.css -- Overlay styles                           [PENDING]
+  shared/types/messages.ts     -- Message protocol + ErrorCode             [DONE]
+  styles/modal.css + toast.css -- Overlay styles                           [DONE]
   icons/icon16,48,128.png      -- Placeholder icons                        [DONE]
 
 web-viewer/
@@ -98,9 +98,9 @@ web-viewer/
   app/login/page.tsx             -- Google OAuth login page [DONE]
   app/feed/page.tsx              -- Feed server component + queries [DONE]
   app/auth/callback/route.ts   -- OAuth callback handler [DONE]
-  components/                  -- PostCard, CollectionFilter, SearchBar    [PENDING]
+  components/                  -- PostCard, CollectionFilter, SearchBar    [DONE]
   lib/supabase.ts              -- Server/middleware/browser helpers        [DONE]
-  lib/filters.ts               -- Text search + collection filter          [PENDING]
+  lib/filters.ts               -- Text search + collection filter          [DONE]
 
 supabase/
   migrations/001_collections_table.sql -- collections table + pgcrypto    [DONE]

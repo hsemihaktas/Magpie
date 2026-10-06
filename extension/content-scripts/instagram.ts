@@ -107,6 +107,13 @@ function detectInstagramPostType(el: Element): "post" | "reel" | "story" {
  * Requirements: 7.1–7.13
  */
 function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
+  // When the container is the entire <main> element (post detail pages have no
+  // <article>), standard selectors like "header img" would find the Instagram
+  // top-nav profile picture instead of the post author. Detect this and use
+  // page-level fallbacks instead.
+  const isMainContainer =
+    el.tagName === "MAIN" || el.getAttribute("role") === "main";
+
   // 1. Locate post URL — abort if missing (Requirement 7.13)
   const postLinkEl =
     el.querySelector<HTMLAnchorElement>(WITHIN_POST.postLink) ??
@@ -124,27 +131,53 @@ function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
   const cleanPath = typeIdx >= 0 ? "/" + pathParts.slice(typeIdx, typeIdx + 2).join("/") + "/" : rawUrl.pathname;
   const post_url = rawUrl.origin + cleanPath;
 
-  // 2. Extract author username from link path
-  const authorLinkEl = el.querySelector<HTMLAnchorElement>(
-    WITHIN_POST.authorLink,
-  );
-  const author_username = authorLinkEl
-    ? authorLinkEl.pathname.replace(/\//g, "") || null
-    : null;
+  // 2–5. Author info and caption — use targeted selectors for MAIN containers
+  // (on /p/ detail pages the top-nav <header> is inside <main> so "header img"
+  //  would return the logged-in user's nav avatar instead of the post author's).
+  let author_username: string | null = null;
+  let author_avatar_url: string | null = null;
+  let author_display_name: string | null = null;
+  let content_text: string | null = null;
 
-  // 3. Avatar URL (exclude from media_urls)
-  const avatarEl = el.querySelector<HTMLImageElement>(WITHIN_POST.authorAvatar);
-  const author_avatar_url = avatarEl?.src ?? null;
+  if (isMainContainer) {
+    // Find the post author link — the first <a href="/user/"> that wraps an
+    // fbcdn image (that's the author avatar thumbnail in the post header).
+    const profileLinks = Array.from(
+      el.querySelectorAll<HTMLAnchorElement>('a[href^="/"][href$="/"]')
+    );
+    for (const link of profileLinks) {
+      const img = link.querySelector<HTMLImageElement>('img[src*="fbcdn.net"]');
+      if (img) {
+        author_username =
+          link.pathname.replace(/\//g, "").split("").slice(0, 30).join("") ||
+          null;
+        author_avatar_url = img.src;
+        break;
+      }
+    }
+    // Caption: Instagram puts it in <h1> on post detail pages
+    const h1El = el.querySelector("h1");
+    content_text = h1El?.textContent?.trim() ?? null;
+    // Display name — look for a span near the author link
+    const displayEl = el.querySelector(WITHIN_POST.authorDisplay);
+    author_display_name = displayEl?.textContent?.trim() ?? null;
+  } else {
+    const authorLinkEl = el.querySelector<HTMLAnchorElement>(
+      WITHIN_POST.authorLink,
+    );
+    author_username = authorLinkEl
+      ? authorLinkEl.pathname.replace(/\//g, "") || null
+      : null;
+    const avatarEl = el.querySelector<HTMLImageElement>(WITHIN_POST.authorAvatar);
+    author_avatar_url = avatarEl?.src ?? null;
+    const displayEl = el.querySelector(WITHIN_POST.authorDisplay);
+    author_display_name = displayEl?.textContent?.trim() ?? null;
+    const captionEl = el.querySelector(WITHIN_POST.caption);
+    content_text = captionEl?.textContent?.trim() ?? null;
+  }
 
-  // 4. Display name
-  const displayEl = el.querySelector(WITHIN_POST.authorDisplay);
-  const author_display_name = displayEl?.textContent?.trim() ?? null;
-
-  // 5. Caption/content text
-  const captionEl = el.querySelector(WITHIN_POST.caption);
-  const content_text = captionEl?.textContent?.trim() ?? null;
-
-  // 6. Timestamp
+  // 6. Timestamp — use the first time[datetime] nearest the action bar;
+  //    on MAIN containers avoid grabbing comment timestamps
   const timeEl = el.querySelector<HTMLTimeElement>(WITHIN_POST.timestamp);
   const post_timestamp = timeEl?.getAttribute("datetime") ?? null;
 
@@ -159,8 +192,16 @@ function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
   const videoPosterEls = Array.from(
     el.querySelectorAll<HTMLVideoElement>(WITHIN_POST.videoPoster),
   );
+  // Exclude profile picture images (avatar URLs) from media_urls.
+  // Instagram sets alt="<username>'s profile picture" / "profil resmi" on avatars.
+  const isAvatarImg = (el: HTMLImageElement): boolean => {
+    const alt = (el.alt ?? "").toLowerCase();
+    return alt.includes("profile picture") || alt.includes("profil resmi");
+  };
+
   const media_urls = [
     ...imageEls
+      .filter((i) => !isAvatarImg(i))
       .map((i) => i.src)
       .filter((src) => src && src !== author_avatar_url && src.includes("http")),
     ...videoEls.map((v) => v.src).filter((src) => !!src),
@@ -535,7 +576,9 @@ function scanLikeSvgsDirectly(root: Element | Document): void {
       if (!container) break;
       if (
         container.tagName === "ARTICLE" ||
-        container.getAttribute("role") === "dialog"
+        container.tagName === "MAIN" ||
+        container.getAttribute("role") === "dialog" ||
+        container.getAttribute("role") === "main"
       ) {
         break;
       }

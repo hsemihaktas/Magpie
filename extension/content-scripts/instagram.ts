@@ -154,14 +154,26 @@ function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
     const h1Text = el.querySelector("h1")?.textContent?.trim() ?? null;
     content_text = ogDesc ?? h1Text;
 
-    // ── Author: find the profile link that comes BEFORE the Like/action bar ──
-    // Links after the Like SVG are commenter avatars — we skip those.
+    // ── Author: find the profile link in the POST CONTENT subtree only ──────
+    // Strategy: walk up from the Like SVG to find the direct child of MAIN
+    // that contains it — this is the "post container" div. The sidebar nav
+    // (which has the logged-in user's profile link) lives in a sibling div,
+    // so restricting the search to postContainer avoids picking up the wrong user.
     const likeSvgEl = el.querySelector(WITHIN_POST.likeSvg);
+    let postContainer: Element = el; // fallback: search all of MAIN
+    if (likeSvgEl) {
+      let node: Element | null = likeSvgEl;
+      while (node && node.parentElement && node.parentElement !== el) {
+        node = node.parentElement;
+      }
+      if (node && node !== el) postContainer = node;
+    }
+
     const profileLinks = Array.from(
-      el.querySelectorAll<HTMLAnchorElement>('a[href^="/"][href$="/"]'),
+      postContainer.querySelectorAll<HTMLAnchorElement>('a[href^="/"][href$="/"]'),
     );
     for (const link of profileLinks) {
-      // Stop once we've passed the Like SVG in document order
+      // Skip links that come after the Like SVG (comment author links)
       if (
         likeSvgEl &&
         !(link.compareDocumentPosition(likeSvgEl) & Node.DOCUMENT_POSITION_FOLLOWING)

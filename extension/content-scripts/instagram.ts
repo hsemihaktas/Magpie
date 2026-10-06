@@ -114,6 +114,9 @@ function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
   const isMainContainer =
     el.tagName === "MAIN" || el.getAttribute("role") === "main";
 
+  // Declare ogImageUrl at function scope so it's accessible in media_urls below.
+  let ogImageUrl: string | null = null;
+
   // 1. Locate post URL — abort if missing (Requirement 7.13)
   const postLinkEl =
     el.querySelector<HTMLAnchorElement>(WITHIN_POST.postLink) ??
@@ -144,7 +147,7 @@ function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
     const ogDesc = document.querySelector<HTMLMetaElement>(
       'meta[property="og:description"]',
     )?.content?.trim() ?? null;
-    const ogImageUrl = document.querySelector<HTMLMetaElement>(
+    ogImageUrl = document.querySelector<HTMLMetaElement>(
       'meta[property="og:image"]',
     )?.content?.trim() ?? null;
     // Fallback to h1 (Instagram sometimes puts caption there) if OG is absent

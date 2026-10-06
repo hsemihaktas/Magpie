@@ -20,7 +20,7 @@ import type {
 
 export type ModalPhase =
   | { phase: "CLOSED" }
-  | { phase: "LOADING"; meta: Partial<PostMetadata> }
+  | { phase: "LOADING"; meta: Partial<PostMetadata>; preselectedId?: string | null }
   | {
       phase: "IDLE";
       meta: Partial<PostMetadata>;
@@ -66,7 +66,7 @@ export type ModalPhase =
 // ── Event types ──────────────────────────────────────────────────────────────
 
 export type ModalEvent =
-  | { type: "OPEN"; meta: Partial<PostMetadata> }
+  | { type: "OPEN"; meta: Partial<PostMetadata>; preselectedId?: string | null }
   | { type: "COLLECTIONS_LOADED"; collections: Collection[] }
   | { type: "COLLECTIONS_FAILED"; error: string }
   | { type: "SELECT_COLLECTION"; id: string }
@@ -98,7 +98,7 @@ export function transition(state: ModalPhase, event: ModalEvent): ModalPhase {
     case "CLOSED":
       // Requirement 6.1: CLOSED + OPEN → LOADING
       if (event.type === "OPEN") {
-        return { phase: "LOADING", meta: event.meta };
+        return { phase: "LOADING", meta: event.meta, preselectedId: event.preselectedId ?? null };
       }
       return state;
 
@@ -110,7 +110,8 @@ export function transition(state: ModalPhase, event: ModalEvent): ModalPhase {
           phase: "IDLE",
           meta: state.meta,
           collections: event.collections,
-          selectedId: null,
+          // Pre-select the collection that was saved to (e.g. current default)
+          selectedId: state.preselectedId ?? null,
         };
       }
       // Requirement 6.3: LOADING + COLLECTIONS_FAILED → FETCH_ERROR
@@ -1138,6 +1139,29 @@ function fetchCollections(): void {
           : Array.isArray(response.data)
           ? (response.data as unknown as Collection[])
           : [];
+
+        // Sync the server-side default to local storage so the extension can
+        // save directly without opening the modal. Runs on every modal open,
+        // picking up any changes made from the web viewer.
+        // Fallback: if no collection is marked is_default yet (e.g. existing
+        // users before migration), treat the first collection as the default
+        // and persist that choice to the server so it won't happen again.
+        const serverDefault = cols.find((c) => c.is_default) ?? cols[0] ?? null;
+        if (serverDefault) {
+          chrome.storage.local
+            .set({ magpie_default_collection: { id: serverDefault.id, name: serverDefault.name } })
+            .catch(() => {});
+
+          // If nothing was flagged is_default on the server, persist the
+          // auto-selected first collection so web viewer shows it correctly.
+          if (!cols.find((c) => c.is_default) && isExtensionContextValid()) {
+            chrome.runtime.sendMessage({
+              type: "SET_DEFAULT_COLLECTION",
+              payload: { collection_id: serverDefault.id },
+            }).catch(() => {});
+          }
+        }
+
         dispatch({ type: "COLLECTIONS_LOADED", collections: cols });
       } else {
         dispatch({ type: "COLLECTIONS_FAILED", error: response.error });
@@ -1242,8 +1266,8 @@ export function dispatch(event: ModalEvent): void {
  *
  * Requirements: 6.1, 6.2, 6.9
  */
-export function openModal(meta: Partial<PostMetadata>): void {
-  dispatch({ type: "OPEN", meta });
+export function openModal(meta: Partial<PostMetadata>, preselectedId?: string | null): void {
+  dispatch({ type: "OPEN", meta, preselectedId });
   fetchCollections();
 }
 

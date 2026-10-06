@@ -38,6 +38,7 @@ export interface SavedPost {
 export interface Collection {
   id: string;
   name: string;
+  is_default: boolean;
 }
 
 // ── Query result type ────────────────────────────────────────────────────────

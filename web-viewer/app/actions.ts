@@ -52,3 +52,35 @@ export async function renameCollection(
   revalidatePath("/feed");
   return { error: null };
 }
+
+
+/**
+ * Designates a collection as the user's default save target.
+ * Clears the previous default (at most one per user) then sets the new one.
+ */
+export async function setDefaultCollection(
+  collectionId: string
+): Promise<{ error: string | null }> {
+  const supabase = createServerClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { error: "Not authenticated" };
+
+  // Clear existing default for this user
+  await supabase
+    .from("collections")
+    .update({ is_default: false })
+    .eq("user_id", session.user.id)
+    .eq("is_default", true);
+
+  // Set the new default
+  const { error } = await supabase
+    .from("collections")
+    .update({ is_default: true })
+    .eq("id", collectionId)
+    .eq("user_id", session.user.id);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/feed");
+  return { error: null };
+}

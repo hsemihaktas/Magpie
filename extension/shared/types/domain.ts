@@ -20,6 +20,8 @@ export interface Collection {
   name: string;
   /** ISO 8601 UTC creation timestamp */
   created_at: string;
+  /** Whether this is the user's default save target (at most one per user) */
+  is_default: boolean;
 }
 
 /**
@@ -121,8 +123,8 @@ export interface SavePostResponse {
 
 // ── Collection management ───────────────────────────────────────────────────
 
-/** The four operations supported by the `manage-collection` Edge Function */
-export type ManageCollectionOperation = "list" | "create" | "rename" | "delete";
+/** The operations supported by the `manage-collection` Edge Function */
+export type ManageCollectionOperation = "list" | "create" | "rename" | "delete" | "set_default";
 
 /**
  * Payload sent by the Background Service Worker to the `manage-collection`
@@ -145,7 +147,8 @@ export type ManageCollectionResponse =
   | { operation: "list"; collections: Collection[] }
   | { operation: "create"; collection: Collection }
   | { operation: "rename"; collection: Collection }
-  | { operation: "delete"; deleted_id: string };
+  | { operation: "delete"; deleted_id: string }
+  | { operation: "set_default"; collection: Collection };
 
 // ── Extension storage ────────────────────────────────────────────────────────
 

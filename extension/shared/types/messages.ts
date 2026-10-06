@@ -63,6 +63,15 @@ export type OutboundMessage =
   | {
       type: "UPDATE_POST_COLLECTION";
       payload: { post_url: string; collection_id: string };
+    }
+
+  /**
+   * Designate a collection as the user's default save target.
+   * Calls manage-collection with operation: "set_default".
+   */
+  | {
+      type: "SET_DEFAULT_COLLECTION";
+      payload: { collection_id: string };
     };
 
 // ── Error codes ──────────────────────────────────────────────────────────────

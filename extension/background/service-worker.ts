@@ -596,6 +596,11 @@ export async function handleMessage(
       );
     }
 
+    case "SET_DEFAULT_COLLECTION": {
+      const { collection_id } = message.payload;
+      return callManageCollection({ operation: "set_default", collection_id }, jwt);
+    }
+
     default: {
       // TypeScript exhaustiveness check — unreachable at runtime when all
       // OutboundMessage variants are handled above.

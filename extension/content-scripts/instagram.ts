@@ -58,7 +58,7 @@ const WITHIN_POST = {
   reelLink: 'a[href*="/reel/"]',
   storyLink: 'a[href*="/stories/"]',
   authorLink: 'header a[href^="/"][href$="/"]',
-  authorAvatar: "header img",
+  authorAvatar: 'header img',
   authorDisplay: "header span:not([aria-label])",
   timestamp: "time[datetime]",
   // Caption: multiple fallback patterns for feed posts, modals, and Reels
@@ -66,8 +66,10 @@ const WITHIN_POST = {
     'div[class*="_a9zs"] span',        // Feed post caption wrapper
     'span[class*="_aacl"]',             // Another caption variant
     'div[class*="caption"] span',       // Caption div
+    'ul li > div > span',               // Post detail caption wrapper
     'ul li > span',                     // Caption in comment list
     'div[data-testid="post-comment-root"] span', // Post detail caption
+    'article h1',                       // Post detail h1 caption
     'h1 + span',                        // Reel title area
     'h1',                               // Reel h1 title (some reels)
   ].join(", "),
@@ -185,6 +187,63 @@ function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
 // ── Button Injection ───────────────────────────────────────────────────────
 
 /**
+ * Fetches the user's collections from the Background Service Worker and
+ * returns the default one (is_default=true, or first in list as fallback).
+ *
+ * Also writes the result to chrome.storage.local so subsequent saves skip
+ * the network call entirely. If the server has no default flagged it also
+ * fires SET_DEFAULT_COLLECTION so the web viewer is kept in sync.
+ */
+async function resolveDefaultCollection(): Promise<
+  { id: string; name: string } | undefined
+> {
+  return new Promise((resolve) => {
+    if (typeof chrome === "undefined" || !chrome.runtime?.id) {
+      resolve(undefined);
+      return;
+    }
+    chrome.runtime.sendMessage(
+      { type: "GET_COLLECTIONS" },
+      (response: { success: boolean; data?: unknown; error?: string }) => {
+        if (chrome.runtime.lastError || !response?.success) {
+          resolve(undefined);
+          return;
+        }
+        const respData = response.data as { collections?: Array<{ id: string; name: string; is_default?: boolean }> };
+        const cols: Array<{ id: string; name: string; is_default?: boolean }> =
+          Array.isArray(respData?.collections)
+            ? respData.collections
+            : Array.isArray(response.data)
+            ? (response.data as typeof cols)
+            : [];
+
+        if (cols.length === 0) { resolve(undefined); return; }
+
+        // Prefer the server-flagged default; fall back to the first collection
+        const serverFlagged = cols.find((c) => c.is_default);
+        const chosen = serverFlagged ?? cols[0];
+
+        // Persist to local cache so future saves are instant
+        chrome.storage.local
+          .set({ magpie_default_collection: { id: chosen.id, name: chosen.name } })
+          .catch(() => {});
+
+        // If nothing was flagged on the server, set it now so the web viewer
+        // reflects the correct default without requiring an extra action.
+        if (!serverFlagged && chrome.runtime?.id) {
+          chrome.runtime.sendMessage({
+            type: "SET_DEFAULT_COLLECTION",
+            payload: { collection_id: chosen.id },
+          }).catch(() => {});
+        }
+
+        resolve({ id: chosen.id, name: chosen.name });
+      },
+    );
+  });
+}
+
+/**
  * Saves a post directly to a known collection via the Background Service Worker.
  * Used when a default collection is already stored — bypasses the modal entirely.
  * On success, shows a toast with a "Change collection" button.
@@ -271,19 +330,29 @@ async function openCollectionPicker(
     return;
   }
 
-  // ── Direct save path: use stored default collection ─────────────────────
+  // ── Direct save path ───────────────────────────────────────────────────
+  // On every non-update click: check local cache first (fast), then fall
+  // back to a one-time GET_COLLECTIONS call to bootstrap the default.
+  // Only open the modal when there are genuinely no collections yet.
   if (!isUpdate) {
     try {
       const stored = await chrome.storage.local.get("magpie_default_collection");
-      const defaultCol = stored["magpie_default_collection"] as
+      let defaultCol = stored["magpie_default_collection"] as
         | { id: string; name: string }
         | undefined;
+
+      // Local cache miss → fetch from server to find/bootstrap the default
+      if (!defaultCol?.id) {
+        defaultCol = await resolveDefaultCollection();
+      }
+
       if (defaultCol?.id) {
         await saveToDefaultCollection(metadata, defaultCol, postEl);
         return;
       }
+      // defaultCol is null only if the user has no collections at all → open modal
     } catch {
-      // Storage read failed — fall through to modal
+      // Storage/network error — fall through to modal
     }
   }
 
@@ -291,9 +360,16 @@ async function openCollectionPicker(
   // After a successful save, store the chosen collection as the new default
   // so the next save button click skips the modal.
   setOnSaveSuccessCallback((collectionId: string, collectionName: string | null) => {
+    // Update local cache
     chrome.storage.local
       .set({ magpie_default_collection: { id: collectionId, name: collectionName ?? "Magpie" } })
       .catch(() => {});
+
+    // Keep server in sync so the web viewer reflects the new default
+    chrome.runtime.sendMessage({
+      type: "SET_DEFAULT_COLLECTION",
+      payload: { collection_id: collectionId },
+    }).catch(() => {});
 
     showToast({
       message: isUpdate
@@ -305,7 +381,14 @@ async function openCollectionPicker(
   });
 
   // Requirement 6.1: delegate to the modal which owns the full picker flow
-  openModal(metadata);
+  // Pass the current default so it's pre-selected in the "Change" picker.
+  let preselectedId: string | null = null;
+  try {
+    const stored = await chrome.storage.local.get("magpie_default_collection");
+    const cached = stored["magpie_default_collection"] as { id: string } | undefined;
+    preselectedId = cached?.id ?? null;
+  } catch { /* ignore */ }
+  openModal(metadata, preselectedId);
 }
 
 /**
@@ -446,14 +529,13 @@ function scanLikeSvgsDirectly(root: Element | Document): void {
   likeSvgs.forEach((svg) => {
     // Walk up to find the closest article, section, or meaningful container
     let container: Element | null = svg;
-    for (let i = 0; i < 15 && container && container !== document.body; i++) {
+    for (let i = 0; i < 25 && container && container !== document.body; i++) {
       container = container.parentElement;
       // Stop at article, dialog, or a section/div that has significant height
       if (!container) break;
       if (
         container.tagName === "ARTICLE" ||
-        (container.tagName === "SECTION" && (container as HTMLElement).offsetHeight > 100) ||
-        (container.getAttribute("role") === "dialog")
+        container.getAttribute("role") === "dialog"
       ) {
         break;
       }
@@ -505,6 +587,12 @@ const DEBOUNCE_MS = 100;
  */
 const observer = new MutationObserver(
   debounce((mutations: MutationRecord[]) => {
+    // If the extension was reloaded, this observer is from the old invalidated
+    // context — disconnect immediately so it never injects stale buttons.
+    if (typeof chrome === "undefined" || !chrome.runtime?.id) {
+      observer.disconnect();
+      return;
+    }
     try {
       // Pass 1: inject into newly added nodes
       for (const mutation of mutations) {

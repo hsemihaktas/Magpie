@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkRateLimit, rateLimitResponse } from "../shared/rate-limit.ts";
 
-const VALID_OPERATIONS = ["list", "create", "rename", "delete"] as const;
+const VALID_OPERATIONS = ["list", "create", "rename", "delete", "set_default"] as const;
 type Operation = (typeof VALID_OPERATIONS)[number];
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -141,10 +141,18 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
+    // Auto-set is_default = true for the first collection the user creates.
+    const { count: existingCount } = await supabase
+      .from("collections")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId);
+
+    const isFirst = existingCount === 0;
+
     // Requirement 9.4: INSERT new collection with user_id from JWT
     const { data: collection, error: insertError } = await supabase
       .from("collections")
-      .insert({ user_id: userId, name: (name as string).trim() })
+      .insert({ user_id: userId, name: (name as string).trim(), is_default: isFirst })
       .select()
       .single();
 
@@ -221,6 +229,42 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     return jsonResponse({ deleted_id: collection_id }, 200);
+  }
+
+  // ── set_default ──────────────────────────────────────────────────────────
+  if (op === "set_default") {
+    const { collection_id } = body as { collection_id?: unknown };
+
+    if (!collection_id) {
+      return jsonResponse({ error: "collection_id is required" }, 400);
+    }
+
+    // Clear all existing defaults for this user, then set the new one.
+    // Done as two sequential queries (not a transaction) — acceptable here
+    // because there is at most one default row per user at any time.
+    const { error: clearError } = await supabase
+      .from("collections")
+      .update({ is_default: false })
+      .eq("user_id", userId)
+      .eq("is_default", true);
+
+    if (clearError) {
+      return jsonResponse({ error: "Failed to clear existing default" }, 500);
+    }
+
+    const { data: collection, error: setError } = await supabase
+      .from("collections")
+      .update({ is_default: true })
+      .eq("id", collection_id as string)
+      .eq("user_id", userId)
+      .select()
+      .single();
+
+    if (setError || !collection) {
+      return jsonResponse({ error: "Collection not found or access denied" }, 403);
+    }
+
+    return jsonResponse({ collection }, 200);
   }
 
   // Unreachable, but satisfies TypeScript exhaustiveness

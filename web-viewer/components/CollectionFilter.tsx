@@ -3,7 +3,7 @@
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useState, useRef, useTransition } from "react";
 import type { Collection } from "@/lib/types";
-import { renameCollection } from "@/app/actions";
+import { renameCollection, setDefaultCollection } from "@/app/actions";
 
 interface CollectionFilterProps {
   collections: Collection[];
@@ -23,6 +23,7 @@ function CollectionItem({
   const [value, setValue] = useState(c.name);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isDefaultPending, startDefaultTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const startEdit = (e: React.MouseEvent) => {
@@ -101,8 +102,41 @@ function CollectionItem({
     );
   }
 
+  const handleSetDefault = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (c.is_default) return; // already default
+    startDefaultTransition(async () => {
+      await setDefaultCollection(c.id);
+    });
+  };
+
   return (
     <div className="group/item flex items-center gap-1">
+      {/* Default star — filled when default, outlined on hover otherwise */}
+      <button
+        type="button"
+        onClick={handleSetDefault}
+        disabled={c.is_default || isDefaultPending}
+        aria-label={c.is_default ? `${c.name} is the default collection` : `Set ${c.name} as default`}
+        title={c.is_default ? "Default collection" : "Set as default"}
+        className={`p-1 rounded shrink-0 transition-all ${
+          c.is_default
+            ? "text-amber-500 dark:text-amber-400 opacity-100"
+            : "opacity-0 group-hover/item:opacity-100 text-gray-300 hover:text-amber-400 dark:text-gray-600 dark:hover:text-amber-400"
+        }`}
+      >
+        {isDefaultPending ? (
+          <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+          </svg>
+        ) : (
+          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={c.is_default ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+        )}
+      </button>
+
       <button
         type="button"
         onClick={() => onNavigate(c.id)}

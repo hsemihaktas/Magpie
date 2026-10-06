@@ -35,8 +35,10 @@ export default function PostCard({ post }: { post: FeedPost }) {
   const [expanded, setExpanded] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [deleted, setDeleted] = useState(false);
+  const [thumbError, setThumbError] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
 
-  const thumbnailUrl = post.thumbnail_url ?? post.media_urls?.[0] ?? null;
+  const thumbnailUrl = thumbError ? null : (post.thumbnail_url ?? post.media_urls?.[0] ?? null);
   const contentText = post.content_text ?? "";
   const isLong = contentText.length > MAX_LEN;
   const display = isLong && !expanded ? contentText.slice(0, MAX_LEN) + "…" : contentText;
@@ -77,7 +79,7 @@ export default function PostCard({ post }: { post: FeedPost }) {
       {thumbnailUrl ? (
         <div className="aspect-[4/3] bg-gray-100 dark:bg-gray-800 overflow-hidden relative">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={thumbnailUrl} alt="" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+          <img src={thumbnailUrl} alt="" onError={() => setThumbError(true)} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
           <div className="absolute top-2 left-2 flex gap-1.5">
             {postTypeLabel && (
               <span className="bg-black/40 backdrop-blur-sm rounded-md px-2 py-0.5 text-[10px] font-semibold text-white uppercase tracking-wide">
@@ -101,9 +103,9 @@ export default function PostCard({ post }: { post: FeedPost }) {
 
         {/* Author */}
         <div className="flex items-center gap-2.5">
-          {post.author_avatar_url ? (
+          {post.author_avatar_url && !avatarError ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={post.author_avatar_url} alt="" className="w-8 h-8 rounded-full object-cover bg-gray-200 dark:bg-gray-700 shrink-0 ring-1 ring-gray-200 dark:ring-gray-700" />
+            <img src={post.author_avatar_url} alt="" onError={() => setAvatarError(true)} className="w-8 h-8 rounded-full object-cover bg-gray-200 dark:bg-gray-700 shrink-0 ring-1 ring-gray-200 dark:ring-gray-700" />
           ) : (
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 shrink-0 flex items-center justify-center text-white text-xs font-bold">
               {displayName?.[0]?.toUpperCase() ?? "?"}

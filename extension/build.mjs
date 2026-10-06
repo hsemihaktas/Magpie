@@ -65,7 +65,7 @@ const entries = [
     banner: { js: 'if(typeof globalThis.process==="undefined"){globalThis.process={env:{},version:"v20.0.0"}}' },
   },
   {
-    in: 'content-scripts/instagram.ts',
+    in: 'content-scripts/instagram/index.ts',
     out: 'dist/content-scripts/instagram.js',
     format: /** @type {import('esbuild').Format} */ ('iife'),
   },

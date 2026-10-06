@@ -61,9 +61,19 @@ const WITHIN_POST = {
   authorAvatar: "header img",
   authorDisplay: "header span:not([aria-label])",
   timestamp: "time[datetime]",
-  caption: 'ul li span, div[class*="_a9zs"] span, div[class*="caption"] span',
-  mediaImages: 'div[role="button"] img, div[class*="_aagv"] img',
+  // Caption: multiple fallback patterns for feed posts, modals, and Reels
+  caption: [
+    'div[class*="_a9zs"] span',        // Feed post caption wrapper
+    'span[class*="_aacl"]',             // Another caption variant
+    'div[class*="caption"] span',       // Caption div
+    'ul li > span',                     // Caption in comment list
+    'div[data-testid="post-comment-root"] span', // Post detail caption
+    'h1 + span',                        // Reel title area
+    'h1',                               // Reel h1 title (some reels)
+  ].join(", "),
+  mediaImages: 'div[role="button"] img, div[class*="_aagv"] img, img[srcset*="instagram"], img[src*="cdninstagram"]',
   mediaVideos: "video source",
+  videoPoster: "video[poster]",  // Reel thumbnail via poster attribute
   // Instagram uses div[role="button"] (not <button> elements!)
   likeSvg: 'svg[aria-label="Beğen"], svg[aria-label="Like"], svg[aria-label="Beğeniyi geri al"], svg[aria-label="Unlike"]',
   shareSvg: 'svg[aria-label="Paylaş"], svg[aria-label="Share"]',
@@ -142,11 +152,16 @@ function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
   const videoEls = Array.from(
     el.querySelectorAll<HTMLSourceElement>(WITHIN_POST.mediaVideos),
   );
+  // Also capture video poster attribute (Reel thumbnails)
+  const videoPosterEls = Array.from(
+    el.querySelectorAll<HTMLVideoElement>(WITHIN_POST.videoPoster),
+  );
   const media_urls = [
     ...imageEls
       .map((i) => i.src)
-      .filter((src) => src && src !== author_avatar_url),
+      .filter((src) => src && src !== author_avatar_url && src.includes("http")),
     ...videoEls.map((v) => v.src).filter((src) => !!src),
+    ...videoPosterEls.map((v) => v.poster).filter((src) => !!src && src !== author_avatar_url),
   ];
 
   return {

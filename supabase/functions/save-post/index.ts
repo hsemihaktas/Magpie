@@ -48,8 +48,17 @@ async function uploadThumbnail(
     // Storage path: {userId}/{postId}.{ext}
     const storagePath = `${userId}/${postId}.${ext}`;
 
-    // Download the media
-    const mediaRes = await fetch(mediaUrls[0]);
+    // Download the media — include browser-like headers so Instagram's CDN
+    // does not reject the request as a crawler/hotlink attempt.
+    const mediaRes = await fetch(mediaUrls[0], {
+      headers: {
+        "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.instagram.com/",
+        "User-Agent":
+          "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+      },
+    });
     if (!mediaRes.ok) {
       return;
     }

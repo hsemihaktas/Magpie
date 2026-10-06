@@ -1,49 +1,42 @@
 import GoogleSignInButton from "@/components/GoogleSignInButton";
 
-/**
- * Login page — Server Component.
- *
- * Reads `searchParams.error` to surface OAuth failure messages without
- * requiring a client-side hook (Requirement 3.6).
- *
- * Requirements: 3.1, 3.6, 12.2
- */
-export default async function LoginPage({
-  searchParams,
-}: {
-  searchParams: { error?: string };
-}) {
+export default async function LoginPage({ searchParams }: { searchParams: { error?: string; reason?: string } }) {
   const oauthFailed = searchParams.error === "oauth_failed";
+  const expired = searchParams.reason === "expired";
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
+    <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-8">
-        {/* Brand area */}
-        <div className="text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-gray-900">
-            Magpie
-          </h1>
-          <p className="mt-2 text-sm text-gray-500">
+        {/* Brand */}
+        <div className="text-center space-y-2">
+          <div className="text-5xl mb-2">🪶</div>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Magpie</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Your personal social content archive
           </p>
         </div>
 
-        {/* OAuth error message — shown only when ?error=oauth_failed is present */}
+        {/* Error messages */}
         {oauthFailed && (
-          <div
-            role="alert"
-            className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
-          >
-            Sign-in failed. Please try again or check that your Google account
-            is accessible.
+          <div role="alert" className="rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 px-4 py-3 text-sm text-red-600 dark:text-red-400 text-center">
+            Sign-in failed. Please try again.
+          </div>
+        )}
+        {expired && (
+          <div role="alert" className="rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 px-4 py-3 text-sm text-amber-600 dark:text-amber-400 text-center">
+            Your session has expired. Please sign in again.
           </div>
         )}
 
-        {/* Sign-in button */}
-        <div className="flex flex-col items-center gap-4">
+        {/* Sign-in */}
+        <div className="flex justify-center">
           <GoogleSignInButton />
         </div>
+
+        <p className="text-center text-xs text-gray-400 dark:text-gray-600">
+          Only you can see your saved content.
+        </p>
       </div>
-    </main>
+    </div>
   );
 }

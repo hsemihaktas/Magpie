@@ -24,10 +24,11 @@ import type {
 } from "../shared/types/messages";
 
 // ── Supabase configuration ────────────────────────────────────────────────────
-// Replace these placeholder values with your actual Supabase project credentials
-// before building. Never commit real credentials to source control.
-const SUPABASE_URL = "https://your-project-ref.supabase.co";
-const SUPABASE_ANON_KEY = "your-supabase-anon-key";
+// Values are injected at build time from the .env file via esbuild define.
+// Copy extension/.env.example to extension/.env and fill in your credentials.
+// Never commit the .env file to source control.
+const SUPABASE_URL: string = process.env.SUPABASE_URL ?? "https://your-project-ref.supabase.co";
+const SUPABASE_ANON_KEY: string = process.env.SUPABASE_ANON_KEY ?? "your-anon-key-here";
 
 /** Storage key used in both chrome.storage.sync and chrome.storage.local */
 const SESSION_KEY = "magpie_session";
@@ -47,17 +48,15 @@ const SESSION_KEY = "magpie_session";
  * (Requirements 1.3, 2.4).
  */
 export async function storeSession(session: StoredSession): Promise<void> {
+  // Always write to local storage for reliability
+  await chrome.storage.local.set({ [SESSION_KEY]: session });
+  console.log("[Magpie] Session stored to local. user_id:", session.user_id, "expiry:", new Date(session.expiry * 1000).toISOString());
+  // Also try sync (best-effort, failure is ok)
   try {
     await chrome.storage.sync.set({ [SESSION_KEY]: session });
-  } catch (syncError) {
-    // chrome.storage.sync is unavailable (e.g. user not signed into Chrome,
-    // or the extension is in a context where sync is disabled).
-    console.warn(
-      "[Magpie] SYNC_UNAVAILABLE — falling back to chrome.storage.local. " +
-        "Session will not be synchronised across devices.",
-      syncError,
-    );
-    await chrome.storage.local.set({ [SESSION_KEY]: session });
+    console.log("[Magpie] Session also stored to sync.");
+  } catch {
+    console.log("[Magpie] Sync storage unavailable, local only.");
   }
 
   // Schedule a proactive refresh alarm 5 minutes (300 s) before the JWT
@@ -81,16 +80,23 @@ export async function getStoredSession(): Promise<StoredSession | null> {
     const result = await chrome.storage.sync.get(SESSION_KEY);
     const session = result[SESSION_KEY] as StoredSession | undefined;
     if (session) {
+      console.log("[Magpie] getStoredSession: found in sync, expiry:", session.expiry, "now:", Math.floor(Date.now()/1000));
       return session;
     }
-  } catch {
-    // sync unavailable — fall through to local storage.
+    console.log("[Magpie] getStoredSession: not in sync");
+  } catch (e) {
+    console.warn("[Magpie] getStoredSession: sync read failed:", e);
   }
 
   // Fall back to chrome.storage.local.
   try {
     const result = await chrome.storage.local.get(SESSION_KEY);
     const session = result[SESSION_KEY] as StoredSession | undefined;
+    if (session) {
+      console.log("[Magpie] getStoredSession: found in local, expiry:", session.expiry, "now:", Math.floor(Date.now()/1000));
+    } else {
+      console.log("[Magpie] getStoredSession: not found anywhere");
+    }
     return session ?? null;
   } catch {
     return null;
@@ -213,8 +219,8 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // ── Edge Function Callers ─────────────────────────────────────────────────────
 
-/** Base URL for all Edge Function endpoints */
-const EDGE_FUNCTION_BASE = `${SUPABASE_URL}/functions/v1`;
+/** Base URL for all Edge Function endpoints — falls back to deriving from SUPABASE_URL */
+const EDGE_FUNCTION_BASE: string = `${SUPABASE_URL}/functions/v1`;
 
 /**
  * Converts a non-OK HTTP Response into a typed BackgroundResponse failure.
@@ -351,27 +357,84 @@ export async function callManageCollection(
  *
  * Requirements: 1.1, 1.2, 1.6, 2.1, 2.2, 12.2, 12.4, 12.5
  */
+// ── Chrome storage adapter for supabase-js ───────────────────────────────────
+// supabase-js needs a storage adapter to persist the PKCE code_verifier.
+// We back it with chrome.storage.session (with local fallback).
+
+const chromeStorageAdapter = {
+  async getItem(key: string): Promise<string | null> {
+    try {
+      const r = await chrome.storage.session.get(key);
+      if (r[key] !== undefined) return r[key] as string;
+    } catch { /* session unavailable */ }
+    try {
+      const r = await chrome.storage.local.get(key);
+      return r[key] !== undefined ? (r[key] as string) : null;
+    } catch { return null; }
+  },
+  async setItem(key: string, value: string): Promise<void> {
+    try {
+      await chrome.storage.session.set({ [key]: value });
+    } catch {
+      await chrome.storage.local.set({ [key]: value });
+    }
+  },
+  async removeItem(key: string): Promise<void> {
+    await Promise.allSettled([
+      chrome.storage.session.remove(key).catch(() => {}),
+      chrome.storage.local.remove(key),
+    ]);
+  },
+};
+
+// ── Login flow ────────────────────────────────────────────────────────────────
+
 async function initiateLogin(): Promise<
   BackgroundResponse<StoredSession | null>
 > {
-  // chrome.identity provides a stable extension-specific redirect URL.
   const redirectUrl = chrome.identity.getRedirectURL();
 
-  const authUrl = new URL(`${SUPABASE_URL}/auth/v1/authorize`);
-  authUrl.searchParams.set("provider", "google");
-  authUrl.searchParams.set("redirect_to", redirectUrl);
+  // Build a Supabase client with chrome.storage backend + PKCE flow.
+  // supabase-js generates the code_verifier internally and stores it via
+  // chromeStorageAdapter so exchangeCodeForSession can retrieve it later.
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      storage: chromeStorageAdapter,
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+      flowType: "pkce",
+    },
+  });
 
   try {
+    // Let supabase-js build the OAuth URL (it adds code_challenge internally)
+    const { data: oauthData, error: oauthError } =
+      await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: true, // we'll open the URL ourselves
+        },
+      });
+
+    if (oauthError || !oauthData.url) {
+      return {
+        success: false,
+        error: oauthError?.message ?? "Failed to build OAuth URL",
+        code: "API_ERROR",
+      };
+    }
+
+    console.log("[Magpie] Opening OAuth URL:", oauthData.url);
+
+    // Open the Google OAuth popup via chrome.identity
     const responseUrl = await new Promise<string>((resolve, reject) => {
       chrome.identity.launchWebAuthFlow(
-        { url: authUrl.toString(), interactive: true },
+        { url: oauthData.url, interactive: true },
         (url) => {
           if (chrome.runtime.lastError) {
-            reject(
-              new Error(
-                chrome.runtime.lastError.message ?? "OAuth flow failed",
-              ),
-            );
+            reject(new Error(chrome.runtime.lastError.message ?? "OAuth flow failed"));
           } else if (!url) {
             reject(new Error("No response URL returned from OAuth flow"));
           } else {
@@ -381,66 +444,57 @@ async function initiateLogin(): Promise<
       );
     });
 
-    // Supabase encodes tokens in the URL fragment:
-    // #access_token=...&expires_in=...&token_type=bearer&...
-    const hashParams = new URLSearchParams(
-      new URL(responseUrl).hash.substring(1),
-    );
-    const accessToken = hashParams.get("access_token");
-    const expiresIn = hashParams.get("expires_in");
+    console.log("[Magpie] OAuth response URL:", responseUrl);
 
-    if (!accessToken) {
-      return {
-        success: false,
-        error: "No access token received from OAuth provider",
-        code: "AUTH_REQUIRED",
-      };
+    // Extract the PKCE code from the redirect URL
+    const code = new URL(responseUrl).searchParams.get("code");
+    console.log("[Magpie] PKCE code:", code ? "present" : "absent");
+
+    if (!code) {
+      // Fallback: try the implicit flow hash fragment
+      const hashParams = new URLSearchParams(new URL(responseUrl).hash.substring(1));
+      const accessToken = hashParams.get("access_token");
+      if (accessToken) {
+        const { data: { user }, error: userError } = await supabase.auth.getUser(accessToken);
+        if (userError || !user) {
+          return { success: false, error: userError?.message ?? "Unable to verify user", code: "API_ERROR" };
+        }
+        const session: StoredSession = {
+          jwt: accessToken,
+          expiry: Math.floor(Date.now() / 1000) + 3600,
+          user_id: user.id,
+        };
+        await storeSession(session);
+        return { success: true, data: session };
+      }
+      return { success: false, error: "No authorization code in OAuth response", code: "AUTH_REQUIRED" };
     }
 
-    // Validate the token and retrieve the canonical user_id.
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-        detectSessionInUrl: false,
-      },
-    });
+    // Exchange code for session — supabase-js retrieves the stored verifier automatically
+    const { data: sessionData, error: exchangeError } =
+      await supabase.auth.exchangeCodeForSession(code);
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser(accessToken);
+    console.log("[Magpie] Exchange result:", exchangeError ? "error: " + exchangeError.message : "success");
 
-    if (userError || !user) {
+    if (exchangeError || !sessionData.session) {
       return {
         success: false,
-        error: userError?.message ?? "Unable to verify user identity",
+        error: exchangeError?.message ?? "Token exchange failed",
         code: "API_ERROR",
       };
     }
 
-    // Requirement 1.3: expiry must not exceed 3600 s; fall back to 1 h if
-    // expires_in is missing from the fragment.
-    const expiry = expiresIn
-      ? Math.floor(Date.now() / 1000) + parseInt(expiresIn, 10)
-      : Math.floor(Date.now() / 1000) + 3600;
-
+    const { access_token, expires_at, user } = sessionData.session;
     const session: StoredSession = {
-      jwt: accessToken,
-      expiry,
+      jwt: access_token,
+      expiry: expires_at ?? Math.floor(Date.now() / 1000) + 3600,
       user_id: user.id,
     };
-
     await storeSession(session);
-
     return { success: true, data: session };
-  } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Authentication flow failed";
 
-    // Requirement 12.5: a cancelled OAuth flow is not an error that should be
-    // surfaced; return a null-session success so the popup stays on the login
-    // view without showing an error message.
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Authentication flow failed";
     if (
       message.includes("cancelled") ||
       message.includes("canceled") ||
@@ -449,11 +503,10 @@ async function initiateLogin(): Promise<
     ) {
       return { success: true, data: null };
     }
-
-    // Requirement 1.6: surface genuine provider-unavailability errors.
     return { success: false, error: message, code: "UNKNOWN_ERROR" };
   }
 }
+
 
 // ── Message Router ────────────────────────────────────────────────────────────
 

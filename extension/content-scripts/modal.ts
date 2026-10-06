@@ -1118,7 +1118,14 @@ function fetchCollections(): void {
         return;
       }
       if (response.success) {
-        dispatch({ type: "COLLECTIONS_LOADED", collections: response.data });
+        // response.data is ManageCollectionResponse: { operation:"list", collections:[] }
+        const respData = response.data as unknown as { collections?: Collection[] };
+        const cols: Collection[] = Array.isArray(respData?.collections)
+          ? respData.collections
+          : Array.isArray(response.data)
+          ? (response.data as unknown as Collection[])
+          : [];
+        dispatch({ type: "COLLECTIONS_LOADED", collections: cols });
       } else {
         dispatch({ type: "COLLECTIONS_FAILED", error: response.error });
       }

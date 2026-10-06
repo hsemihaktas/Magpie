@@ -1,279 +1,148 @@
 "use client";
 
-/**
- * PostCard — displays a single saved post with all required elements.
- *
- * Elements rendered (Requirements 15.2, 15.5, 15.6):
- * 1. Platform icon (Instagram or X SVG)
- * 2. Author avatar with fallback (inline SVG when no URL — Requirement 15.8)
- * 3. Author username
- * 4. Content text with expand/collapse for >280 chars (Requirements 15.3, 15.4)
- * 5. Thumbnail (thumbnail_url → first media_urls item → platform icon placeholder, Req 15.7)
- * 6. Collection name badge
- * 7. saved_at date formatted with toLocaleDateString()
- * 8. "Go to Original" link / disabled button (Requirement 15.9)
- */
-
 import { useState } from "react";
 import type { FeedPost } from "@/lib/types";
 
-// ── Platform icons ────────────────────────────────────────────────────────────
-
-function InstagramIcon({ className = "w-5 h-5" }: { className?: string }) {
+function InstagramIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
-    <svg
-      aria-label="Instagram"
-      role="img"
-      viewBox="0 0 24 24"
-      fill="none"
-      className={className}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <rect
-        x="2"
-        y="2"
-        width="20"
-        height="20"
-        rx="5"
-        ry="5"
-        stroke="url(#ig-gradient)"
-        strokeWidth="2"
-        fill="none"
-      />
-      <circle
-        cx="12"
-        cy="12"
-        r="4.5"
-        stroke="url(#ig-gradient)"
-        strokeWidth="2"
-        fill="none"
-      />
-      <circle cx="17.5" cy="6.5" r="1" fill="url(#ig-gradient)" />
-      <defs>
-        <linearGradient id="ig-gradient" x1="0" y1="24" x2="24" y2="0">
-          <stop offset="0%" stopColor="#f09433" />
-          <stop offset="25%" stopColor="#e6683c" />
-          <stop offset="50%" stopColor="#dc2743" />
-          <stop offset="75%" stopColor="#cc2366" />
-          <stop offset="100%" stopColor="#bc1888" />
-        </linearGradient>
-      </defs>
+    <svg aria-label="Instagram" role="img" viewBox="0 0 24 24" fill="none" className={className}>
+      <rect x="2" y="2" width="20" height="20" rx="5" stroke="url(#ig-g)" strokeWidth="2" fill="none"/>
+      <circle cx="12" cy="12" r="4.5" stroke="url(#ig-g)" strokeWidth="2" fill="none"/>
+      <circle cx="17.5" cy="6.5" r="1" fill="url(#ig-g)"/>
+      <defs><linearGradient id="ig-g" x1="0" y1="24" x2="24" y2="0">
+        <stop offset="0%" stopColor="#f09433"/><stop offset="50%" stopColor="#dc2743"/>
+        <stop offset="100%" stopColor="#bc1888"/>
+      </linearGradient></defs>
     </svg>
   );
 }
 
-function XIcon({
-  className = "w-5 h-5 text-black dark:text-white",
-}: {
-  className?: string;
-}) {
+function XIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
-    <svg
-      aria-label="X (Twitter)"
-      role="img"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.747l7.73-8.835L2.002 2.25h6.351l4.266 5.643L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
+    <svg aria-label="X" role="img" viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.747l7.73-8.835L2.002 2.25h6.351l4.266 5.643L18.244 2.25z"/>
     </svg>
   );
 }
 
-// ── Generic avatar placeholder (Requirement 15.8) ─────────────────────────────
+const MAX_LEN = 240;
 
-function GenericAvatarIcon() {
-  return (
-    <svg
-      aria-label="User avatar"
-      role="img"
-      viewBox="0 0 36 36"
-      fill="none"
-      className="w-9 h-9 rounded-full bg-gray-200 flex-shrink-0"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <circle cx="18" cy="18" r="18" fill="#E5E7EB" />
-      <circle cx="18" cy="14" r="5" fill="#9CA3AF" />
-      <path d="M6 30c0-6.627 5.373-10 12-10s12 3.373 12 10" fill="#9CA3AF" />
-    </svg>
-  );
-}
+const POST_TYPE_LABELS: Record<string, string> = {
+  post: "Post", reel: "Reel", story: "Story", tweet: "Tweet"
+};
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-const CONTENT_MAX_LENGTH = 280;
-
-// ── Component ─────────────────────────────────────────────────────────────────
-
-interface PostCardProps {
-  post: FeedPost;
-}
-
-export default function PostCard({ post }: PostCardProps) {
-  // Requirement 15.3, 15.4 — track expand state for long captions
+export default function PostCard({ post }: { post: FeedPost }) {
   const [expanded, setExpanded] = useState(false);
-
-  // 5. Thumbnail: prefer thumbnail_url, fall back to first media_urls item (Req 19.6, 19.8)
   const thumbnailUrl = post.thumbnail_url ?? post.media_urls?.[0] ?? null;
-
-  // 7. Formatted save date
-  const savedAtLabel = new Date(post.saved_at).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-
-  // Content text helpers
   const contentText = post.content_text ?? "";
-  const isLong = contentText.length > CONTENT_MAX_LENGTH;
-  const displayText =
-    isLong && !expanded
-      ? contentText.slice(0, CONTENT_MAX_LENGTH) + "…"
-      : contentText;
+  const isLong = contentText.length > MAX_LEN;
+  const display = isLong && !expanded ? contentText.slice(0, MAX_LEN) + "…" : contentText;
+  const date = new Date(post.saved_at).toLocaleDateString("tr-TR", { day: "numeric", month: "short", year: "numeric" });
+  const postTypeLabel = post.post_type ? POST_TYPE_LABELS[post.post_type] ?? post.post_type : null;
+  const displayName = post.author_display_name || post.author_username;
 
   return (
-    <article className="flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
-      {/* Thumbnail — always rendered; shows platform icon placeholder when no media (Req 15.7) */}
-      <div className="relative w-full aspect-video bg-gray-100">
-        {thumbnailUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={thumbnailUrl}
-            alt="Post media"
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-50">
-            {post.platform === "instagram" ? (
-              <InstagramIcon className="w-12 h-12 opacity-25" />
-            ) : (
-              <XIcon className="w-12 h-12 opacity-25 text-gray-400" />
-            )}
+    <article className="group flex flex-col bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden hover:shadow-lg dark:hover:shadow-black/30 hover:-translate-y-0.5 transition-all duration-200">
+      
+      {/* Thumbnail */}
+      {thumbnailUrl ? (
+        <div className="aspect-[4/3] bg-gray-100 dark:bg-gray-800 overflow-hidden relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={thumbnailUrl} alt="" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+          {/* Platform badge overlay */}
+          <div className="absolute top-2 right-2 bg-black/40 backdrop-blur-sm rounded-lg p-1">
+            {post.platform === "instagram" ? <InstagramIcon className="w-3.5 h-3.5" /> : <XIcon className="w-3.5 h-3.5 text-white" />}
           </div>
-        )}
-      </div>
+          {/* Post type pill */}
+          {postTypeLabel && (
+            <div className="absolute top-2 left-2 bg-black/40 backdrop-blur-sm rounded-md px-2 py-0.5 text-[10px] font-semibold text-white uppercase tracking-wide">
+              {postTypeLabel}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="aspect-[4/3] bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-850 flex flex-col items-center justify-center gap-2 relative">
+          {post.platform === "instagram" ? (
+            <InstagramIcon className="w-10 h-10 opacity-20" />
+          ) : (
+            <XIcon className="w-10 h-10 opacity-20 text-gray-500" />
+          )}
+          {postTypeLabel && (
+            <span className="text-[10px] uppercase tracking-widest font-semibold text-gray-400 dark:text-gray-600">{postTypeLabel}</span>
+          )}
+        </div>
+      )}
 
-      <div className="flex flex-col gap-3 p-4 flex-1">
-        {/* Header: avatar + username + platform icon */}
-        <div className="flex items-center gap-3">
-          {/* 2. Author avatar — inline SVG fallback when URL is missing (Req 15.8) */}
+      {/* Content */}
+      <div className="p-4 flex flex-col gap-3 flex-1">
+        
+        {/* Author */}
+        <div className="flex items-center gap-2.5">
           {post.author_avatar_url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={post.author_avatar_url}
-              alt={
-                post.author_username
-                  ? `${post.author_username} avatar`
-                  : "User avatar"
-              }
-              className="w-9 h-9 rounded-full object-cover bg-gray-200 flex-shrink-0"
-              onError={(e) => {
-                // Replace broken image with the generic avatar icon via hidden + sibling trick
-                // by hiding this img and relying on the parent to re-render; simplest approach
-                // is to swap src to a transparent 1×1 pixel so onError doesn't loop
-                (e.currentTarget as HTMLImageElement).style.display = "none";
-                const sibling = (e.currentTarget as HTMLImageElement)
-                  .nextElementSibling as HTMLElement | null;
-                if (sibling) sibling.style.display = "block";
-              }}
-            />
-          ) : null}
-          {/* Shown when author_avatar_url is null, or revealed by onError above */}
-          <span
-            style={{ display: post.author_avatar_url ? "none" : "block" }}
-            aria-hidden={!!post.author_avatar_url}
-          >
-            <GenericAvatarIcon />
-          </span>
-
-          <div className="flex-1 min-w-0">
-            {/* 3. Author username */}
-            <p className="text-sm font-semibold text-gray-900 truncate">
-              {post.author_username ?? "Unknown"}
-            </p>
-
-            {/* 7. Saved at date */}
-            <p className="text-xs text-gray-400">{savedAtLabel}</p>
+            <img src={post.author_avatar_url} alt="" className="w-8 h-8 rounded-full object-cover bg-gray-200 dark:bg-gray-700 shrink-0 ring-1 ring-gray-200 dark:ring-gray-700" />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 shrink-0 flex items-center justify-center text-white text-xs font-bold">
+              {(displayName)?.[0]?.toUpperCase() ?? "?"}
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            {displayName && (
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate leading-tight">
+                {displayName}
+              </p>
+            )}
+            {post.author_username && post.author_display_name && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 truncate leading-tight">@{post.author_username}</p>
+            )}
+            {!post.author_display_name && post.author_username && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 leading-tight">@{post.author_username}</p>
+            )}
           </div>
-
-          {/* 1. Platform icon */}
-          <span className="flex-shrink-0">
-            {post.platform === "instagram" ? <InstagramIcon /> : <XIcon />}
-          </span>
         </div>
 
-        {/* 4. Content text with expand/collapse (Requirements 15.3, 15.4) */}
-        {contentText && (
-          <div>
-            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap break-words">
-              {displayText}
-            </p>
+        {/* Caption */}
+        {contentText ? (
+          <div className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+            <p className="whitespace-pre-wrap break-words">{display}</p>
             {isLong && (
-              <button
-                type="button"
-                onClick={() => setExpanded((prev) => !prev)}
-                className="mt-1 text-sm text-indigo-600 hover:text-indigo-800 bg-transparent border-none p-0 cursor-pointer"
-              >
+              <button type="button" onClick={() => setExpanded(!expanded)} className="mt-1 text-xs text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium">
                 {expanded ? "Show less" : "Show more"}
               </button>
             )}
           </div>
+        ) : (
+          <p className="text-sm text-gray-400 dark:text-gray-600 italic">No caption</p>
         )}
 
-        {/* Footer: collection badge + action button */}
-        <div className="flex items-center justify-between gap-2 mt-auto pt-1">
-          {/* 6. Collection name badge */}
+        {/* Meta row */}
+        <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+          <span>{date}</span>
+          {post.post_timestamp && (
+            <>
+              <span>·</span>
+              <span>Posted {new Date(post.post_timestamp).toLocaleDateString("tr-TR", { day: "numeric", month: "short", year: "numeric" })}</span>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between mt-auto pt-1 border-t border-gray-100 dark:border-gray-800">
           {post.collections?.name ? (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100 truncate max-w-[160px]">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900 truncate max-w-[130px]">
               {post.collections.name}
             </span>
-          ) : (
-            <span />
-          )}
+          ) : <span />}
 
-          {/* 8. Go to Original (Req 15.9 — disabled when post_url is null) */}
           {post.post_url ? (
-            <a
-              href={post.post_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-900 text-white hover:bg-gray-700 transition-colors flex-shrink-0"
-            >
-              Go to Original
-              <svg
-                className="w-3 h-3"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-              >
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                <polyline points="15 3 21 3 21 9" />
-                <line x1="10" y1="14" x2="21" y2="3" />
+            <a href={post.post_url} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 flex items-center gap-1 shrink-0">
+              View original
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
               </svg>
             </a>
-          ) : (
-            <button
-              type="button"
-              disabled
-              title="Original link unavailable"
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-gray-400 cursor-not-allowed flex-shrink-0"
-            >
-              <svg
-                className="w-3 h-3"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                aria-hidden="true"
-              >
-                <line x1="2" y1="2" x2="22" y2="22" />
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-              </svg>
-              Go to Original
-            </button>
-          )}
+          ) : <span className="text-xs text-gray-300 dark:text-gray-600">No link</span>}
         </div>
       </div>
     </article>

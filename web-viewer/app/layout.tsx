@@ -1,22 +1,44 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
-
-const inter = Inter({ subsets: ["latin"] });
+import ThemeToggle from "@/components/ThemeToggle";
 
 export const metadata: Metadata = {
-  title: "Magpie — Web Viewer",
-  description: "Browse and search your saved social media content.",
+  title: "Magpie",
+  description: "Your personal social content archive",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Prevent theme flash */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                const t = localStorage.getItem('magpie-theme');
+                const p = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                if (t === 'dark' || (!t && p)) document.documentElement.classList.add('dark');
+              } catch(e) {}
+            `,
+          }}
+        />
+      </head>
+      <body className="min-h-screen flex flex-col">
+        {/* Header */}
+        <header className="sticky top-0 z-40 h-14 flex items-center px-6 border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/80 backdrop-blur-sm">
+          <div className="flex items-center gap-2 flex-1">
+            <span className="text-xl">🪶</span>
+            <span className="font-semibold text-gray-900 dark:text-white tracking-tight">Magpie</span>
+          </div>
+          <ThemeToggle />
+        </header>
+
+        {/* Page content */}
+        <main className="flex-1">
+          {children}
+        </main>
+      </body>
     </html>
   );
 }

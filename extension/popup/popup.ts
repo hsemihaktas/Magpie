@@ -14,6 +14,16 @@ import type {
   OutboundMessage,
 } from "../shared/types/messages";
 import type { Collection, StoredSession } from "../shared/types/domain";
+// Helper: extract Collection[] from ManageCollectionResponse (list operation)
+function extractCollections(data: unknown): Collection[] {
+  if (!data) return [];
+  const d = data as Record<string, unknown>;
+  if (Array.isArray(d["collections"])) return d["collections"] as Collection[];
+  if (Array.isArray(data)) return data as Collection[];
+  return [];
+}
+
+
 
 // ── Module state ──────────────────────────────────────────────────────────────
 
@@ -239,13 +249,16 @@ function showCollectionViewError(msg: string): void {
  *
  * Requirements: 13.1, 13.2, 13.3, 13.9
  */
-export function renderCollectionView(cols: Collection[] = []): void {
-  collections = [...cols];
+export function renderCollectionView(cols: Collection[] | unknown = []): void {
+  // Defensive: handle non-array input gracefully
+  const safeArray: Collection[] = Array.isArray(cols) ? (cols as Collection[]) : [];
+  console.log("[Magpie] renderCollectionView called with", safeArray.length, "items");
+  collections = [...safeArray];
 
   const listItemsHtml =
-    collections.length === 0
+    safeArray.length === 0
       ? '<p class="empty-message">No collections yet</p>'
-      : collections.map(collectionItemHtml).join("");
+      : safeArray.map(collectionItemHtml).join("");
 
   getApp().innerHTML = `
     <div class="collections-container">
@@ -426,14 +439,37 @@ async function handleCreateCollection(name: string): Promise<void> {
       BackgroundResponse<Collection>
     >({ type: "CREATE_COLLECTION", payload: { name: trimmedName } });
 
+    if (!response) {
+      // Service worker restarted and response was lost — retry once
+      console.warn("[Magpie] CREATE_COLLECTION: no response, retrying...");
+      const retry = await chrome.runtime.sendMessage<
+        OutboundMessage,
+        BackgroundResponse<Collection>
+      >({ type: "CREATE_COLLECTION", payload: { name: trimmedName } });
+      if (retry?.success) {
+        collections = [...collections, retry.data];
+        renderCollectionView(collections);
+        return;
+      }
+      replaceAddSection(addSectionHtml(true, name, retry?.error ?? "Failed to create collection. Please try again."));
+      return;
+    }
+
     if (response.success) {
-      // Append the new collection and do a full re-render (Req 13.4)
-      collections = [...collections, response.data];
+      // response.data is ManageCollectionResponse: { operation: "create", collection: Collection }
+      // Extract the nested Collection object
+      const responseData = response.data as unknown as { collection?: Collection };
+      const newCollection: Collection = responseData?.collection ?? (response.data as unknown as Collection);
+      if (newCollection?.id && newCollection?.name) {
+        collections = [...collections, newCollection];
+      }
       renderCollectionView(collections);
     } else {
+      console.warn("[Magpie] CREATE_COLLECTION error:", response.error, response.code);
       replaceAddSection(addSectionHtml(true, name, response.error));
     }
-  } catch {
+  } catch (err) {
+    console.error("[Magpie] CREATE_COLLECTION exception:", err);
     replaceAddSection(
       addSectionHtml(
         true,
@@ -600,28 +636,29 @@ async function handleLogin(): Promise<void> {
     >({ type: "INITIATE_LOGIN" });
 
     if (response.success) {
-      // Auth completed — load collections and show the management view (Req 12.3)
-      const collectionsResp = await chrome.runtime.sendMessage<
-        OutboundMessage,
-        BackgroundResponse<Collection[]>
-      >({ type: "GET_COLLECTIONS" });
-
-      renderCollectionView(collectionsResp.success ? collectionsResp.data : []);
+      // Auth completed — immediately show collection view, then load collections
+      renderCollectionView([]);
+      // Load collections in the background; failure here should NOT reset to login
+      chrome.runtime.sendMessage<OutboundMessage, BackgroundResponse<Collection[]>>(
+        { type: "GET_COLLECTIONS" }
+      ).then((collectionsResp) => {
+        if (collectionsResp?.success && collectionsResp.data) {
+          renderCollectionView(extractCollections(collectionsResp.data));
+        }
+      }).catch(() => { /* keep collection view even if fetch fails */ });
     } else {
       // Distinguish between hard auth errors and user-driven cancellation
       if (
         response.code === "AUTH_REQUIRED" ||
         response.code === "REFRESH_FAILED"
       ) {
-        // Authentication failed — show error message (Req 12.4)
         renderLoginView(response.error);
       } else {
-        // OAuth flow was cancelled or encountered a non-auth error — silent
-        // return to login view without displaying an error (Req 12.5)
         renderLoginView();
       }
     }
-  } catch {
+  } catch (err) {
+    console.error("[Magpie] handleLogin error:", err);
     // BSW unreachable or unexpected runtime error — return to login silently
     renderLoginView();
   }
@@ -649,36 +686,46 @@ async function handleLogout(): Promise<void> {
 
 /**
  * Entry point — called on DOMContentLoaded.
- *
- * 1. Shows a loading spinner while querying session state.
- * 2. If a valid session exists: fetches collections and renders the
- *    collection management view (Req 13.1).
- * 3. If no session exists: renders the login view (Req 12.1, 2.1).
  */
 async function init(): Promise<void> {
   renderLoadingState();
 
+  // Step 1: Check session — if this throws, show login
+  let hasSession = false;
   try {
     const sessionResp = await chrome.runtime.sendMessage<
       OutboundMessage,
       BackgroundResponse<StoredSession | null>
     >({ type: "GET_SESSION_STATUS" });
 
-    if (sessionResp.success && sessionResp.data) {
-      // Valid session — load collections and show the management view (Req 13.1)
-      const collectionsResp = await chrome.runtime.sendMessage<
-        OutboundMessage,
-        BackgroundResponse<Collection[]>
-      >({ type: "GET_COLLECTIONS" });
-
-      renderCollectionView(collectionsResp.success ? collectionsResp.data : []);
-    } else {
-      // No valid session — show the login view (Req 12.1, 2.1)
-      renderLoginView();
-    }
-  } catch {
-    // BSW unavailable on first open — fall through to the login view
+    hasSession = !!(sessionResp?.success && (sessionResp as { success: true; data: unknown }).data);
+    console.log("[Magpie] init: hasSession =", hasSession, sessionResp?.success, !!sessionResp?.data);
+  } catch (e) {
+    console.error("[Magpie] init: GET_SESSION_STATUS failed:", e);
     renderLoginView();
+    return;
+  }
+
+  if (!hasSession) {
+    renderLoginView();
+    return;
+  }
+
+  // Step 2: Show collection view immediately — DO NOT let this fail to login
+  renderCollectionView([]);
+
+  // Step 3: Load collections in background — failure here stays on collection view
+  try {
+    const collectionsResp = await chrome.runtime.sendMessage<
+      OutboundMessage,
+      BackgroundResponse<Collection[]>
+    >({ type: "GET_COLLECTIONS" });
+
+    if (collectionsResp?.success && collectionsResp?.data) {
+      renderCollectionView(extractCollections(collectionsResp.data));
+    }
+  } catch (e) {
+    console.warn("[Magpie] init: GET_COLLECTIONS failed (staying on collection view):", e);
   }
 }
 

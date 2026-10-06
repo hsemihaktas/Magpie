@@ -45,7 +45,14 @@ export async function checkRateLimit(
   key: string,
   config: RateLimitConfig,
 ): Promise<RateLimitResult> {
-  const kv = await Deno.openKv()
+  // If Deno KV is not available (e.g., not enabled in Supabase project),
+  // fail open so requests are not blocked by missing infrastructure.
+  let kv: Deno.Kv;
+  try {
+    kv = await Deno.openKv();
+  } catch {
+    return { allowed: true, remaining: config.maxRequests, retryAfterSeconds: 0 };
+  }
   const kvKey: Deno.KvKey = ['rate_limit', key]
   const expireIn = config.windowSeconds * 1000 // Deno KV TTL is in milliseconds
 

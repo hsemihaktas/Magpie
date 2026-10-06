@@ -42,8 +42,10 @@ function debounce<A extends unknown[]>(
  * class names change with every deploy.
  */
 const INSTAGRAM_POST_SELECTORS: string[] = [
-  'article[role="presentation"]', // Feed post / reel card
-  'div[role="dialog"] article', // Post modal / lightbox
+  // Feed posts — any visible article with content
+  'article',
+  // Post/Reel modal opened from feed
+  'div[role="dialog"] article',
 ];
 
 /**
@@ -62,8 +64,9 @@ const WITHIN_POST = {
   caption: 'ul li span, div[class*="_a9zs"] span, div[class*="caption"] span',
   mediaImages: 'div[role="button"] img, div[class*="_aagv"] img',
   mediaVideos: "video source",
-  actionBar:
-    'section[class*="_ae2s"], section[class*="coreSpriteDesktopNavProfile"], div[role="group"]',
+  // Instagram uses div[role="button"] (not <button> elements!)
+  likeSvg: 'svg[aria-label="Beğen"], svg[aria-label="Like"], svg[aria-label="Beğeniyi geri al"], svg[aria-label="Unlike"]',
+  shareSvg: 'svg[aria-label="Paylaş"], svg[aria-label="Share"]',
 } as const;
 
 /**
@@ -99,7 +102,14 @@ function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
 
   if (!postLinkEl?.href) return null; // Requirement 7.13: abort save
 
-  const post_url = new URL(postLinkEl.href, window.location.origin).href;
+  // Clean the post URL: remove sub-paths like /liked_by/, /comments/, etc.
+  // Instagram sometimes wraps the like count as an anchor to /liked_by/
+  const rawUrl = new URL(postLinkEl.href, window.location.origin);
+  // Keep only the canonical post path: /p/{id}/ or /reel/{id}/
+  const pathParts = rawUrl.pathname.split("/").filter(Boolean);
+  const typeIdx = pathParts.findIndex((p) => p === "p" || p === "reel" || p === "stories");
+  const cleanPath = typeIdx >= 0 ? "/" + pathParts.slice(typeIdx, typeIdx + 2).join("/") + "/" : rawUrl.pathname;
+  const post_url = rawUrl.origin + cleanPath;
 
   // 2. Extract author username from link path
   const authorLinkEl = el.querySelector<HTMLAnchorElement>(
@@ -229,19 +239,60 @@ function openCollectionPicker(
 function injectSaveButton(postEl: Element): void {
   if (postEl.querySelector('[data-saver-injected="true"]')) return; // Req 4.5
 
-  // Try multiple selectors for the action bar
-  const actionBar = postEl.querySelector<HTMLElement>(WITHIN_POST.actionBar);
-  if (!actionBar) return; // Skip if no action bar found
+  // Skip hidden articles (Instagram pre-renders hidden articles)
+  const style = window.getComputedStyle(postEl);
+  if (style.display === 'none' || (postEl as HTMLElement).offsetHeight === 0) return;
 
+  // Find the Like SVG icon — Instagram uses svg[aria-label="Beğen"/"Like"]
+  const likeSvg = postEl.querySelector(WITHIN_POST.likeSvg);
+  if (!likeSvg) return;
+
+  // Find the Bookmark/Save SVG too — action bar contains both
+  const bookmarkSvg = postEl.querySelector('svg[aria-label="Kaydet"], svg[aria-label="Save"], svg[aria-label="Remove"], svg[aria-label="Kaldır"]');
+
+  // Find the common ancestor of Like and Bookmark = the full action bar row
+  let actionBar: HTMLElement | null = null;
+  if (bookmarkSvg) {
+    let el: Element | null = likeSvg;
+    while (el && el !== postEl) {
+      el = el.parentElement;
+      if (el && el.contains(bookmarkSvg)) {
+        actionBar = el as HTMLElement;
+        break;
+      }
+    }
+  }
+  // Fallback: parent of like button's parent
+  if (!actionBar) {
+    actionBar = (likeSvg.closest('button')?.parentElement?.parentElement ?? 
+                 likeSvg.closest('button')?.parentElement) as HTMLElement | null;
+  }
+  if (!actionBar) return;
+
+  // Inject our button just before the Bookmark button (or at end)
   const btn = document.createElement("button");
-  btn.setAttribute("data-saver-injected", "true"); // Sentinel (Req 4.5)
-  btn.setAttribute("aria-label", "Save to Magpie archive");
+  btn.setAttribute("data-saver-injected", "true");
+  btn.setAttribute("aria-label", "Save to Magpie");
   btn.setAttribute("type", "button");
-  btn.className = "magpie-save-btn";
-  // Archive box SVG icon — distinct from any Instagram native icon (Req 4.4)
-  btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M20 3H4a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1v11a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V8a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1zm-1 15H5V8h14v10zM5 6V5h14v1H5zm7 4H9v2h3v2h2v-2h3v-2h-3V8h-2v2z"/></svg>`;
-  btn.style.cssText =
-    "background:none;border:none;cursor:pointer;padding:4px;display:inline-flex;align-items:center;opacity:0.7;color:#262626;";
+  // Match Instagram's button style exactly
+  btn.style.cssText = [
+    "background:none",
+    "border:none",
+    "cursor:pointer",
+    "padding:8px",
+    "display:inline-flex",
+    "align-items:center",
+    "justify-content:center",
+    "color:var(--ig-primary-text,#262626)",
+    "opacity:0.85",
+    "transition:opacity .2s",
+    "vertical-align:middle",
+    "flex-shrink:0",
+  ].join(";");
+  btn.addEventListener("mouseenter", () => { btn.style.opacity = "1"; });
+  btn.addEventListener("mouseleave", () => { btn.style.opacity = "0.85"; });
+  // Archive-box SVG at same size as Instagram icons (24px)
+  btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M20 3H4a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1v11a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V8a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1zm-1 15H5V8h14v10zM5 6V5h14v1H5zm7 4H9v2h3v2h2v-2h3v-2h-3V8h-2v2z"/></svg>';
 
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -249,7 +300,23 @@ function injectSaveButton(postEl: Element): void {
     openCollectionPicker(postEl);
   });
 
-  actionBar.appendChild(btn);
+  // Instagram structure (discovered via DOM inspection):
+  // SVG[Paylaş] → DIV[role="button"] (share btn) → DIV wrapper → SECTION (action bar)
+  //
+  // We insert our button after the share wrapper (level 1 parent of share btn)
+  // so it appears as a sibling in the action bar flex row
+  const shareSvg = postEl.querySelector(WITHIN_POST.shareSvg);
+  const shareRoleBtn = shareSvg?.closest('[role="button"]');  // div[role="button"]
+  const shareWrapper = shareRoleBtn?.parentElement;  // the wrapper div
+
+  if (shareWrapper) {
+    // Insert our button INSIDE the share wrapper (as a sibling of the share button div)
+    // This keeps the SECTION's 4-item flex structure intact (adding a 5th item breaks bookmark positioning)
+    // The share wrapper already has display:flex so our btn appears right of the share icon
+    shareWrapper.appendChild(btn);
+  } else {
+    actionBar.appendChild(btn);
+  }
 }
 
 // ── DOM Scanning ───────────────────────────────────────────────────────────

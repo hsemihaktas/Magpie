@@ -140,9 +140,12 @@ function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
   let content_text: string | null = null;
 
   if (isMainContainer) {
-    // ── Caption: OG meta tag is the most reliable source on direct /p/ loads ──
+    // ── OG meta tags — populated by SSR on direct URL loads ──────────────────
     const ogDesc = document.querySelector<HTMLMetaElement>(
       'meta[property="og:description"]',
+    )?.content?.trim() ?? null;
+    const ogImageUrl = document.querySelector<HTMLMetaElement>(
+      'meta[property="og:image"]',
     )?.content?.trim() ?? null;
     // Fallback to h1 (Instagram sometimes puts caption there) if OG is absent
     const h1Text = el.querySelector("h1")?.textContent?.trim() ?? null;
@@ -228,7 +231,10 @@ function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
   };
 
   const media_urls = [
-    // Video poster first — gives the correct thumbnail for Reels
+    // og:image first for MAIN/detail pages (SSR thumbnail, covers Reels that
+    // don't expose video[poster] in the DOM when the video is streaming)
+    ...(isMainContainer && ogImageUrl ? [ogImageUrl] : []),
+    // Video poster — gives the correct thumbnail for Reels with static poster
     ...videoPosterEls
       .map((v) => v.poster)
       .filter((src) => !!src && src !== author_avatar_url),

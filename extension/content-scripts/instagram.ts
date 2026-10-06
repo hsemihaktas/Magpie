@@ -71,7 +71,8 @@ const WITHIN_POST = {
     'h1 + span',                        // Reel title area
     'h1',                               // Reel h1 title (some reels)
   ].join(", "),
-  mediaImages: 'div[role="button"] img, div[class*="_aagv"] img, img[srcset*="instagram"], img[src*="cdninstagram"]',
+  // Media images: fbcdn.net is Instagram/Meta's CDN (covers both feed posts and Reels)
+  mediaImages: 'div[role="button"] img, div[class*="_aagv"] img, img[src*="fbcdn.net"]',
   mediaVideos: "video source",
   videoPoster: "video[poster]",  // Reel thumbnail via poster attribute
   // Instagram uses div[role="button"] (not <button> elements!)
@@ -308,10 +309,20 @@ function injectSaveButton(postEl: Element): void {
     "transition:opacity .2s",
     "vertical-align:middle",
     "flex-shrink:0",
+    "line-height:0",
   ].join(";");
-  btn.addEventListener("mouseenter", () => { btn.style.opacity = "1"; });
+  btn.addEventListener("mouseenter", (e) => {
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    btn.style.opacity = "1";
+  });
+  btn.addEventListener("mouseover", (e) => {
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+  });
   btn.addEventListener("mouseleave", () => { btn.style.opacity = "0.85"; });
   // Archive-box SVG at same size as Instagram icons (24px)
+  // Archive box icon (original Magpie icon)
   btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M20 3H4a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1v11a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V8a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1zm-1 15H5V8h14v10zM5 6V5h14v1H5zm7 4H9v2h3v2h2v-2h3v-2h-3V8h-2v2z"/></svg>';
 
   btn.addEventListener("click", (e) => {
@@ -329,10 +340,35 @@ function injectSaveButton(postEl: Element): void {
   const shareRoleBtn = shareSvg?.closest('[role="button"]');  // div[role="button"]
   const shareWrapper = shareRoleBtn?.parentElement;  // the wrapper div
 
-  if (shareWrapper) {
-    // Insert our button INSIDE the share wrapper (as a sibling of the share button div)
-    // This keeps the SECTION's 4-item flex structure intact (adding a 5th item breaks bookmark positioning)
-    // The share wrapper already has display:flex so our btn appears right of the share icon
+  // Determine insertion strategy based on page context
+  const isReelsPage = window.location.pathname.startsWith("/reels/");
+
+  if (isReelsPage) {
+    // On Reels page: vertical action bar — insert AFTER bookmark wrapper for clean placement
+    const bookmarkWrapper = bookmarkSvg?.closest('[role="button"]')?.parentElement;
+    if (bookmarkWrapper && bookmarkWrapper.parentElement) {
+      // Style adjustment for vertical dark Reels bar
+      btn.style.cssText = [
+        "background:none",
+        "border:none",
+        "cursor:pointer",
+        "padding:6px 8px",
+        "margin-top:12px",
+        "display:flex",
+        "align-items:center",
+        "justify-content:center",
+        "color:white",
+        "opacity:0.9",
+        "transition:opacity .2s",
+        "width:100%",
+        "box-sizing:border-box",
+      ].join(";");
+      bookmarkWrapper.insertAdjacentElement("afterend", btn);
+    } else {
+      actionBar.appendChild(btn);
+    }
+  } else if (shareWrapper) {
+    // Feed: insert INSIDE share wrapper (preserves 4-item flex layout)
     shareWrapper.appendChild(btn);
   } else {
     actionBar.appendChild(btn);
@@ -342,24 +378,52 @@ function injectSaveButton(postEl: Element): void {
 // ── DOM Scanning ───────────────────────────────────────────────────────────
 
 /**
+ * Scans for any Like SVGs on the page and injects the save button into
+ * their parent post element — works for feed, post detail, and Reels pages
+ * where the article selector might not match.
+ */
+function scanLikeSvgsDirectly(root: Element | Document): void {
+  const likeSvgs = root.querySelectorAll(WITHIN_POST.likeSvg);
+  likeSvgs.forEach((svg) => {
+    // Walk up to find the closest article, section, or meaningful container
+    let container: Element | null = svg;
+    for (let i = 0; i < 15 && container && container !== document.body; i++) {
+      container = container.parentElement;
+      // Stop at article, dialog, or a section/div that has significant height
+      if (!container) break;
+      if (
+        container.tagName === "ARTICLE" ||
+        (container.tagName === "SECTION" && (container as HTMLElement).offsetHeight > 100) ||
+        (container.getAttribute("role") === "dialog")
+      ) {
+        break;
+      }
+    }
+    if (container && container !== document.body) {
+      injectSaveButton(container);
+    }
+  });
+}
+
+/**
  * Queries `root` for all elements matching `INSTAGRAM_POST_SELECTORS` and
- * calls `injectSaveButton` on each. Also checks whether `root` itself matches
- * a selector so newly-added top-level post nodes are not missed.
+ * calls `injectSaveButton` on each. Also does a direct Like SVG scan as fallback.
  *
  * Requirements: 4.1, 4.2
  */
 function scanAndInject(root: Element): void {
-  // Check root itself first (handles case where the added node IS a post element)
+  // Primary: scan for article elements
   for (const sel of INSTAGRAM_POST_SELECTORS) {
     if (root.matches(sel)) {
       injectSaveButton(root);
       break;
     }
   }
-
-  // Then scan all matching descendants
   const combinedSelector = INSTAGRAM_POST_SELECTORS.join(",");
   root.querySelectorAll(combinedSelector).forEach((el) => injectSaveButton(el));
+
+  // Fallback: find Like SVGs directly (works for /p/ detail and /reels/ feed)
+  scanLikeSvgsDirectly(root);
 }
 
 // ── MutationObserver ───────────────────────────────────────────────────────

@@ -216,20 +216,29 @@ function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
   const videoPosterEls = Array.from(
     el.querySelectorAll<HTMLVideoElement>(WITHIN_POST.videoPoster),
   );
-  // Exclude profile picture images (avatar URLs) from media_urls.
+  // Exclude profile/avatar images from media_urls.
   // Instagram sets alt="<username>'s profile picture" / "profil resmi" on avatars.
-  const isAvatarImg = (el: HTMLImageElement): boolean => {
-    const alt = (el.alt ?? "").toLowerCase();
-    return alt.includes("profile picture") || alt.includes("profil resmi");
+  // Also exclude images inside <nav> or <header> elements (logged-in user's nav pic).
+  const isAvatarImg = (img: HTMLImageElement): boolean => {
+    const alt = (img.alt ?? "").toLowerCase();
+    if (alt.includes("profile picture") || alt.includes("profil resmi")) return true;
+    // Exclude anything inside nav or header (top navigation bar avatars)
+    if (img.closest("nav") || img.closest("header")) return true;
+    return false;
   };
 
   const media_urls = [
+    // Video poster first — gives the correct thumbnail for Reels
+    ...videoPosterEls
+      .map((v) => v.poster)
+      .filter((src) => !!src && src !== author_avatar_url),
+    // Inline video sources
+    ...videoEls.map((v) => v.src).filter((src) => !!src),
+    // Still images — avatars and nav images filtered out
     ...imageEls
       .filter((i) => !isAvatarImg(i))
       .map((i) => i.src)
       .filter((src) => src && src !== author_avatar_url && src.includes("http")),
-    ...videoEls.map((v) => v.src).filter((src) => !!src),
-    ...videoPosterEls.map((v) => v.poster).filter((src) => !!src && src !== author_avatar_url),
   ];
 
   return {

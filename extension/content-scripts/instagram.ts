@@ -143,51 +143,47 @@ function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
   let content_text: string | null = null;
 
   if (isMainContainer) {
-    // ── OG meta tags — populated by SSR on direct URL loads ──────────────────
-    const ogDesc = document.querySelector<HTMLMetaElement>(
-      'meta[property="og:description"]',
-    )?.content?.trim() ?? null;
+    // ── OG meta tags ──────────────────────────────────────────────────────────
     ogImageUrl = document.querySelector<HTMLMetaElement>(
       'meta[property="og:image"]',
     )?.content?.trim() ?? null;
-    // Fallback to h1 (Instagram sometimes puts caption there) if OG is absent
-    const h1Text = el.querySelector("h1")?.textContent?.trim() ?? null;
-    content_text = ogDesc ?? h1Text;
 
-    // ── Author: find the profile link in the POST CONTENT subtree only ──────
-    // Strategy: walk up from the Like SVG to find the direct child of MAIN
-    // that contains it — this is the "post container" div. The sidebar nav
-    // (which has the logged-in user's profile link) lives in a sibling div,
-    // so restricting the search to postContainer avoids picking up the wrong user.
-    const likeSvgEl = el.querySelector(WITHIN_POST.likeSvg);
-    let postContainer: Element = el; // fallback: search all of MAIN
-    if (likeSvgEl) {
-      let node: Element | null = likeSvgEl;
-      while (node && node.parentElement && node.parentElement !== el) {
-        node = node.parentElement;
-      }
-      if (node && node !== el) postContainer = node;
-    }
+    // ── Caption: h1 is the confirmed location on post detail pages ───────────
+    // Instagram puts the caption inside <h1 class="_ap3a ...">
+    // og:description shows "N likes, N comments - user, date" — NOT the caption.
+    const h1El = el.querySelector("h1");
+    content_text = h1El?.textContent?.trim() ?? null;
 
-    const profileLinks = Array.from(
-      postContainer.querySelectorAll<HTMLAnchorElement>('a[href^="/"][href$="/"]'),
-    );
-    for (const link of profileLinks) {
-      // Skip links that come after the Like SVG (comment author links)
-      if (
-        likeSvgEl &&
-        !(link.compareDocumentPosition(likeSvgEl) & Node.DOCUMENT_POSITION_FOLLOWING)
-      ) {
-        break;
-      }
-      const img = link.querySelector<HTMLImageElement>('img[src*="fbcdn.net"]');
-      if (img) {
-        const slug = link.pathname.replace(/\//g, "");
-        if (slug && slug.length < 50) {
-          author_username = slug;
-          author_avatar_url = img.src;
-          break;
+    // ── Author: anchor on h1, look for the profile link ABOVE it ─────────────
+    // The author header (avatar + username) is always directly above the caption.
+    // Walk up from h1 to find the nearest ancestor that also contains a profile
+    // link — that ancestor is the "post info panel". Search only links that
+    // precede the h1 in document order (author section, not comment section).
+    if (h1El) {
+      let infoPanel: Element | null = h1El.parentElement;
+      outer: while (infoPanel && infoPanel !== el) {
+        const firstLink = infoPanel.querySelector<HTMLAnchorElement>('a[href^="/"][href$="/"]');
+        if (firstLink) {
+          const panelLinks = Array.from(
+            infoPanel.querySelectorAll<HTMLAnchorElement>('a[href^="/"][href$="/"]'),
+          );
+          for (const link of panelLinks) {
+            // Only look at links that come BEFORE the h1 (author section)
+            if (!(link.compareDocumentPosition(h1El) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+              break; // Passed the h1, stop searching
+            }
+            const img = link.querySelector<HTMLImageElement>('img[src*="fbcdn.net"]');
+            if (img) {
+              const slug = link.pathname.replace(/\//g, "");
+              if (slug && slug.length > 0 && slug.length < 50) {
+                author_username = slug;
+                author_avatar_url = img.src;
+                break outer;
+              }
+            }
+          }
         }
+        infoPanel = infoPanel.parentElement;
       }
     }
 

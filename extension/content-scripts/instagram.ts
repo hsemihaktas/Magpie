@@ -185,63 +185,118 @@ function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
 // ── Button Injection ───────────────────────────────────────────────────────
 
 /**
- * Opens the Collection Picker Modal for the post element that was clicked.
+ * Saves a post directly to a known collection via the Background Service Worker.
+ * Used when a default collection is already stored — bypasses the modal entirely.
+ * On success, shows a toast with a "Change collection" button.
+ */
+async function saveToDefaultCollection(
+  metadata: Partial<PostMetadata>,
+  defaultCol: { id: string; name: string },
+  postEl: Element,
+): Promise<void> {
+  if (!metadata.post_url) return;
+  if (typeof chrome === "undefined" || !chrome.runtime?.id) return;
+
+  try {
+    const response = (await chrome.runtime.sendMessage({
+      type: "SAVE_POST",
+      payload: {
+        post_url: metadata.post_url,
+        collection_id: defaultCol.id,
+        post_type: metadata.post_type ?? "post",
+        platform: metadata.platform ?? "instagram",
+        author_username: metadata.author_username ?? null,
+        author_display_name: metadata.author_display_name ?? null,
+        author_avatar_url: metadata.author_avatar_url ?? null,
+        content_text: metadata.content_text ?? null,
+        media_urls: metadata.media_urls ?? null,
+        post_timestamp: metadata.post_timestamp ?? null,
+        raw_metadata: metadata.raw_metadata ?? null,
+      },
+    })) as { success: boolean; error?: string };
+
+    if (response.success) {
+      showToast({
+        message: `Saved to ${defaultCol.name} \u2713`,
+        platform: "instagram",
+        onChangeCollection: () => void openCollectionPicker(postEl, true),
+      });
+    } else {
+      // Collection may have been deleted — clear the default so next click opens the modal
+      await chrome.storage.local.remove("magpie_default_collection").catch(() => {});
+      showToast({
+        message: "Save failed — please pick a collection.",
+        platform: "instagram",
+      });
+    }
+  } catch {
+    showToast({ message: "Save failed. Please try again.", platform: "instagram" });
+  }
+}
+
+/**
+ * Entry point for the save button click.
  *
- * Extracts metadata first — if the post URL cannot be resolved the save is
- * aborted and an inline error toast is shown instead (Requirement 7.13).
- *
- * Before opening the modal, a one-shot callback is registered via
- * `setOnSaveSuccessCallback`. The modal's `performSave` invokes this callback
- * (with the resolved `collection_id`) after a successful save. The callback
- * shows the platform-specific confirmation toast here, in the content script,
- * keeping the modal decoupled from platform UI (Requirements 11.1–11.5, 11.7).
- *
- * @param postEl    The post card element whose save button was clicked.
- * @param isUpdate  Pass `true` when re-opening after a "Change collection"
- *                  click so the toast reads "Collection updated ✓" instead of
- *                  "Saved to Magpie ✓" (Requirement 11.7).
+ * Two paths:
+ *  1. Default collection exists & isUpdate=false → save directly without modal,
+ *     then show toast with "Change collection" button.
+ *  2. No default yet, or isUpdate=true (user clicked "Change") → open the modal.
+ *     After a successful modal save, the chosen collection is stored as the new
+ *     default (so the next click skips the modal).
+ *     The save-post Edge Function upserts on (user_id, post_url), so re-saving
+ *     with a different collection_id effectively moves the post.
  *
  * Requirements: 6.1, 7.12, 7.13, 11.4, 11.5, 11.7, 11.8
  */
-function openCollectionPicker(
+async function openCollectionPicker(
   postEl: Element,
   isUpdate: boolean = false,
-): void {
-  // Check if extension context is still valid (invalidated after reload)
+): Promise<void> {
   if (typeof chrome === "undefined" || !chrome.runtime?.id) {
     console.warn("[Magpie] Extension context invalidated. Refresh the page.");
     return;
   }
-  const metadata = extractInstagramMetadata(postEl);
 
+  const metadata = extractInstagramMetadata(postEl);
   if (!metadata) {
-    // Requirement 7.13: abort save and surface an error to the user
-    console.error(
-      "[Magpie] Could not determine post URL. Try navigating directly to the post page.",
-    );
+    console.error("[Magpie] Could not determine post URL. Try navigating directly to the post page.");
     showToast({
-      message:
-        "Could not determine the post URL. Try navigating directly to the post page.",
+      message: "Could not determine the post URL. Try navigating directly to the post page.",
       platform: "instagram",
     });
     return;
   }
 
-  // Register a one-shot callback so the modal notifies us on successful save.
-  // Each call overwrites the previous registration — only one modal is open at
-  // a time so this is safe.
-  setOnSaveSuccessCallback(() => {
-    // Requirement 11.7: first saves say "Saved to Magpie ✓"; re-saves after
-    // "Change collection" say "Collection updated ✓".
+  // ── Direct save path: use stored default collection ─────────────────────
+  if (!isUpdate) {
+    try {
+      const stored = await chrome.storage.local.get("magpie_default_collection");
+      const defaultCol = stored["magpie_default_collection"] as
+        | { id: string; name: string }
+        | undefined;
+      if (defaultCol?.id) {
+        await saveToDefaultCollection(metadata, defaultCol, postEl);
+        return;
+      }
+    } catch {
+      // Storage read failed — fall through to modal
+    }
+  }
+
+  // ── Modal path: first time, or user clicked "Change" ────────────────────
+  // After a successful save, store the chosen collection as the new default
+  // so the next save button click skips the modal.
+  setOnSaveSuccessCallback((collectionId: string, collectionName: string | null) => {
+    chrome.storage.local
+      .set({ magpie_default_collection: { id: collectionId, name: collectionName ?? "Magpie" } })
+      .catch(() => {});
+
     showToast({
       message: isUpdate
         ? "Collection updated \u2713"
-        : "Saved to Magpie \u2713",
+        : `Saved to ${collectionName ?? "Magpie"} \u2713`,
       platform: "instagram",
-      // Requirements 11.4, 11.5: "Change collection" button re-opens the
-      // modal for the exact same post, flagged as an update so the next
-      // successful save shows the "Collection updated ✓" message.
-      onChangeCollection: () => openCollectionPicker(postEl, true),
+      onChangeCollection: () => void openCollectionPicker(postEl, true),
     });
   });
 
@@ -328,7 +383,7 @@ function injectSaveButton(postEl: Element): void {
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     e.preventDefault();
-    openCollectionPicker(postEl);
+    void openCollectionPicker(postEl);
   });
 
   // Instagram structure (discovered via DOM inspection):

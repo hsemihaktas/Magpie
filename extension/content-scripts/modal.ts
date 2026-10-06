@@ -1161,7 +1161,7 @@ let currentState: ModalPhase = { phase: "CLOSED" };
  *
  * Requirements: 6.4, 6.6
  */
-let onSaveSuccessCallback: ((collectionId: string) => void) | null = null;
+let onSaveSuccessCallback: ((collectionId: string, collectionName: string | null) => void) | null = null;
 
 /**
  * Registers a callback that fires after a post has been saved successfully.
@@ -1173,7 +1173,7 @@ let onSaveSuccessCallback: ((collectionId: string) => void) | null = null;
  * Requirements: 6.4, 6.6
  */
 export function setOnSaveSuccessCallback(
-  cb: (collectionId: string) => void,
+  cb: (collectionId: string, collectionName: string | null) => void,
 ): void {
   onSaveSuccessCallback = cb;
 }
@@ -1363,7 +1363,8 @@ async function performSave(
     dispatch({ type: "SAVE_SUCCEEDED" });
     // Notify the caller with the resolved collection_id so it can show
     // the toast "Change collection" button with the correct context.
-    onSaveSuccessCallback?.(collectionId);
+    const collectionName = state.collections.find((c) => c.id === collectionId)?.name ?? null;
+    onSaveSuccessCallback?.(collectionId, collectionName);
   } else {
     // Requirement 6.7: save failure → show error, keep modal open
     dispatch({ type: "SAVE_FAILED", error: saveResp.error });

@@ -191,6 +191,11 @@ function openCollectionPicker(
   postEl: Element,
   isUpdate: boolean = false,
 ): void {
+  // Check if extension context is still valid (invalidated after reload)
+  if (typeof chrome === "undefined" || !chrome.runtime?.id) {
+    console.warn("[Magpie] Extension context invalidated. Refresh the page.");
+    return;
+  }
   const metadata = extractInstagramMetadata(postEl);
 
   if (!metadata) {

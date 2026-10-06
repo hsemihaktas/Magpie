@@ -1104,7 +1104,20 @@ export function renderModal(state: ModalPhase): void {
  *
  * Requirements: 6.2, 6.9
  */
+/** Returns true if the extension context is still valid. */
+function isExtensionContextValid(): boolean {
+  try {
+    return typeof chrome !== "undefined" && !!chrome.runtime?.id;
+  } catch {
+    return false;
+  }
+}
+
 function fetchCollections(): void {
+  if (!isExtensionContextValid()) {
+    dispatch({ type: "COLLECTIONS_FAILED", error: "Extension reloaded — please refresh the page." });
+    return;
+  }
   chrome.runtime.sendMessage(
     { type: "GET_COLLECTIONS" },
     (response: BackgroundResponse<Collection[]>) => {

@@ -254,6 +254,10 @@ async function openCollectionPicker(
 ): Promise<void> {
   if (typeof chrome === "undefined" || !chrome.runtime?.id) {
     console.warn("[Magpie] Extension context invalidated. Refresh the page.");
+    showToast({
+      message: "Magpie needs a page refresh — press F5 and try again.",
+      platform: "instagram",
+    });
     return;
   }
 
@@ -529,6 +533,11 @@ const observer = new MutationObserver(
 observer.observe(document.body, { childList: true, subtree: true });
 
 // ── Initial Scan ───────────────────────────────────────────────────────────
+
+// Remove any stale injected buttons left over from a previous content script
+// instance (happens when the extension is reloaded without a page refresh —
+// Chrome invalidates the old context but keeps the old DOM mutations).
+document.querySelectorAll('[data-saver-injected="true"]').forEach((btn) => btn.remove());
 
 // Inject buttons on any post elements already in the DOM when the
 // content script first loads (Requirement 4.1)

@@ -140,27 +140,51 @@ function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
   let content_text: string | null = null;
 
   if (isMainContainer) {
-    // Find the post author link — the first <a href="/user/"> that wraps an
-    // fbcdn image (that's the author avatar thumbnail in the post header).
+    // ── Caption: OG meta tag is the most reliable source on direct /p/ loads ──
+    const ogDesc = document.querySelector<HTMLMetaElement>(
+      'meta[property="og:description"]',
+    )?.content?.trim() ?? null;
+    // Fallback to h1 (Instagram sometimes puts caption there) if OG is absent
+    const h1Text = el.querySelector("h1")?.textContent?.trim() ?? null;
+    content_text = ogDesc ?? h1Text;
+
+    // ── Author: find the profile link that comes BEFORE the Like/action bar ──
+    // Links after the Like SVG are commenter avatars — we skip those.
+    const likeSvgEl = el.querySelector(WITHIN_POST.likeSvg);
     const profileLinks = Array.from(
-      el.querySelectorAll<HTMLAnchorElement>('a[href^="/"][href$="/"]')
+      el.querySelectorAll<HTMLAnchorElement>('a[href^="/"][href$="/"]'),
     );
     for (const link of profileLinks) {
-      const img = link.querySelector<HTMLImageElement>('img[src*="fbcdn.net"]');
-      if (img) {
-        author_username =
-          link.pathname.replace(/\//g, "").split("").slice(0, 30).join("") ||
-          null;
-        author_avatar_url = img.src;
+      // Stop once we've passed the Like SVG in document order
+      if (
+        likeSvgEl &&
+        !(link.compareDocumentPosition(likeSvgEl) & Node.DOCUMENT_POSITION_FOLLOWING)
+      ) {
         break;
       }
+      const img = link.querySelector<HTMLImageElement>('img[src*="fbcdn.net"]');
+      if (img) {
+        const slug = link.pathname.replace(/\//g, "");
+        if (slug && slug.length < 50) {
+          author_username = slug;
+          author_avatar_url = img.src;
+          break;
+        }
+      }
     }
-    // Caption: Instagram puts it in <h1> on post detail pages
-    const h1El = el.querySelector("h1");
-    content_text = h1El?.textContent?.trim() ?? null;
-    // Display name — look for a span near the author link
-    const displayEl = el.querySelector(WITHIN_POST.authorDisplay);
-    author_display_name = displayEl?.textContent?.trim() ?? null;
+
+    // Display name from OG title: "Display Name on Instagram: ..."
+    const ogTitle = document.querySelector<HTMLMetaElement>(
+      'meta[property="og:title"]',
+    )?.content?.trim() ?? null;
+    if (ogTitle) {
+      const match = ogTitle.match(/^(.+?)\s+on\s+Instagram/i);
+      if (match) author_display_name = match[1].trim();
+    }
+    if (!author_display_name) {
+      const displayEl = el.querySelector(WITHIN_POST.authorDisplay);
+      author_display_name = displayEl?.textContent?.trim() ?? null;
+    }
   } else {
     const authorLinkEl = el.querySelector<HTMLAnchorElement>(
       WITHIN_POST.authorLink,

@@ -107,17 +107,7 @@ function detectInstagramPostType(el: Element): "post" | "reel" | "story" {
  * Requirements: 7.1–7.13
  */
 function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
-  // When the container is the entire <main> element (post detail pages have no
-  // <article>), standard selectors like "header img" would find the Instagram
-  // top-nav profile picture instead of the post author. Detect this and use
-  // page-level fallbacks instead.
-  const isMainContainer =
-    el.tagName === "MAIN" || el.getAttribute("role") === "main";
-
-  // Declare ogImageUrl at function scope so it's accessible in media_urls below.
-  let ogImageUrl: string | null = null;
-
-  // 1. Locate post URL — abort if missing (Requirement 7.13)
+  // ── Post URL ──────────────────────────────────────────────────────────────
   const postLinkEl =
     el.querySelector<HTMLAnchorElement>(WITHIN_POST.postLink) ??
     el.querySelector<HTMLAnchorElement>(WITHIN_POST.reelLink) ??
@@ -125,133 +115,123 @@ function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
 
   if (!postLinkEl?.href) return null; // Requirement 7.13: abort save
 
-  // Clean the post URL: remove sub-paths like /liked_by/, /comments/, etc.
-  // Instagram sometimes wraps the like count as an anchor to /liked_by/
   const rawUrl = new URL(postLinkEl.href, window.location.origin);
-  // Keep only the canonical post path: /p/{id}/ or /reel/{id}/
   const pathParts = rawUrl.pathname.split("/").filter(Boolean);
   const typeIdx = pathParts.findIndex((p) => p === "p" || p === "reel" || p === "stories");
-  const cleanPath = typeIdx >= 0 ? "/" + pathParts.slice(typeIdx, typeIdx + 2).join("/") + "/" : rawUrl.pathname;
+  const cleanPath =
+    typeIdx >= 0
+      ? "/" + pathParts.slice(typeIdx, typeIdx + 2).join("/") + "/"
+      : rawUrl.pathname;
   const post_url = rawUrl.origin + cleanPath;
 
-  // 2–5. Author info and caption — use targeted selectors for MAIN containers
-  // (on /p/ detail pages the top-nav <header> is inside <main> so "header img"
-  //  would return the logged-in user's nav avatar instead of the post author's).
-  let author_username: string | null = null;
-  let author_avatar_url: string | null = null;
-  let author_display_name: string | null = null;
-  let content_text: string | null = null;
+  // ── og:image — always try (works for dialog AND main containers) ──────────
+  const ogImageUrl =
+    document.querySelector<HTMLMetaElement>('meta[property="og:image"]')
+      ?.content?.trim() ?? null;
 
-  if (isMainContainer) {
-    // ── OG meta tags ──────────────────────────────────────────────────────────
-    ogImageUrl = document.querySelector<HTMLMetaElement>(
-      'meta[property="og:image"]',
-    )?.content?.trim() ?? null;
-
-    // ── Caption: h1 is the confirmed location on post detail pages ───────────
-    // Instagram puts the caption inside <h1 class="_ap3a ...">
-    // og:description shows "N likes, N comments - user, date" — NOT the caption.
-    const h1El = el.querySelector("h1");
-    content_text = h1El?.textContent?.trim() ?? null;
-
-    // ── Author: anchor on h1, look for the profile link ABOVE it ─────────────
-    // The author header (avatar + username) is always directly above the caption.
-    // Walk up from h1 to find the nearest ancestor that also contains a profile
-    // link — that ancestor is the "post info panel". Search only links that
-    // precede the h1 in document order (author section, not comment section).
-    if (h1El) {
-      let infoPanel: Element | null = h1El.parentElement;
-      outer: while (infoPanel && infoPanel !== el) {
-        const firstLink = infoPanel.querySelector<HTMLAnchorElement>('a[href^="/"][href$="/"]');
-        if (firstLink) {
-          const panelLinks = Array.from(
-            infoPanel.querySelectorAll<HTMLAnchorElement>('a[href^="/"][href$="/"]'),
-          );
-          for (const link of panelLinks) {
-            // Only look at links that come BEFORE the h1 (author section)
-            if (!(link.compareDocumentPosition(h1El) & Node.DOCUMENT_POSITION_FOLLOWING)) {
-              break; // Passed the h1, stop searching
-            }
-            const img = link.querySelector<HTMLImageElement>('img[src*="fbcdn.net"]');
-            if (img) {
-              const slug = link.pathname.replace(/\//g, "");
-              if (slug && slug.length > 0 && slug.length < 50) {
-                author_username = slug;
-                author_avatar_url = img.src;
-                break outer;
-              }
-            }
-          }
-        }
-        infoPanel = infoPanel.parentElement;
-      }
-    }
-
-    // Display name from OG title: "Display Name on Instagram: ..."
-    const ogTitle = document.querySelector<HTMLMetaElement>(
-      'meta[property="og:title"]',
-    )?.content?.trim() ?? null;
-    if (ogTitle) {
-      const match = ogTitle.match(/^(.+?)\s+on\s+Instagram/i);
-      if (match) author_display_name = match[1].trim();
-    }
-    if (!author_display_name) {
-      const displayEl = el.querySelector(WITHIN_POST.authorDisplay);
-      author_display_name = displayEl?.textContent?.trim() ?? null;
-    }
-  } else {
-    const authorLinkEl = el.querySelector<HTMLAnchorElement>(
-      WITHIN_POST.authorLink,
-    );
-    author_username = authorLinkEl
-      ? authorLinkEl.pathname.replace(/\//g, "") || null
-      : null;
-    const avatarEl = el.querySelector<HTMLImageElement>(WITHIN_POST.authorAvatar);
-    author_avatar_url = avatarEl?.src ?? null;
-    const displayEl = el.querySelector(WITHIN_POST.authorDisplay);
-    author_display_name = displayEl?.textContent?.trim() ?? null;
+  // ── Caption ───────────────────────────────────────────────────────────────
+  // Instagram puts the full caption in <h1> on post/reel detail pages.
+  // og:description is "N likes, N comments - user, date" — NOT the caption.
+  const h1El = el.querySelector("h1");
+  let content_text: string | null = h1El?.textContent?.trim() ?? null;
+  if (!content_text) {
+    // Fallback: feed post caption selectors
     const captionEl = el.querySelector(WITHIN_POST.caption);
     content_text = captionEl?.textContent?.trim() ?? null;
   }
 
-  // 6. Timestamp — use the first time[datetime] nearest the action bar;
-  //    on MAIN containers avoid grabbing comment timestamps
+  // ── Author ────────────────────────────────────────────────────────────────
+  // Strategy: the post author header is always directly ABOVE the caption (h1).
+  // Walk up from h1 to find the nearest ancestor that contains a profile link
+  // preceding the h1 — this avoids commenter links, nav links, and feed content.
+  let author_username: string | null = null;
+  let author_avatar_url: string | null = null;
+
+  if (h1El) {
+    let infoPanel: Element | null = h1El.parentElement;
+    outerAuthor: while (infoPanel && infoPanel !== el) {
+      const panelLinks = Array.from(
+        infoPanel.querySelectorAll<HTMLAnchorElement>('a[href^="/"][href$="/"]'),
+      );
+      for (const link of panelLinks) {
+        // Skip links that appear AFTER the h1 (comments section)
+        if (!(link.compareDocumentPosition(h1El) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+          break;
+        }
+        const img = link.querySelector<HTMLImageElement>('img[src*="fbcdn.net"]');
+        if (img) {
+          const slug = link.pathname.replace(/\//g, "");
+          if (slug && slug.length > 0 && slug.length < 50) {
+            author_username = slug;
+            author_avatar_url = img.src;
+            break outerAuthor;
+          }
+        }
+      }
+      infoPanel = infoPanel.parentElement;
+    }
+  }
+  // Fallback: traditional header selectors (feed posts have <header> element)
+  if (!author_username) {
+    const authorLinkEl = el.querySelector<HTMLAnchorElement>(WITHIN_POST.authorLink);
+    author_username = authorLinkEl
+      ? authorLinkEl.pathname.replace(/\//g, "") || null
+      : null;
+  }
+  if (!author_avatar_url) {
+    const avatarEl = el.querySelector<HTMLImageElement>(WITHIN_POST.authorAvatar);
+    author_avatar_url = avatarEl?.src ?? null;
+  }
+
+  // ── Display name ──────────────────────────────────────────────────────────
+  let author_display_name: string | null = null;
+  const ogTitle =
+    document.querySelector<HTMLMetaElement>('meta[property="og:title"]')
+      ?.content?.trim() ?? null;
+  if (ogTitle) {
+    const match = ogTitle.match(/^(.+?)\s+on\s+Instagram/i);
+    if (match) author_display_name = match[1].trim();
+  }
+  if (!author_display_name) {
+    const displayEl = el.querySelector(WITHIN_POST.authorDisplay);
+    author_display_name = displayEl?.textContent?.trim() ?? null;
+  }
+
+  // ── Timestamp ─────────────────────────────────────────────────────────────
   const timeEl = el.querySelector<HTMLTimeElement>(WITHIN_POST.timestamp);
   const post_timestamp = timeEl?.getAttribute("datetime") ?? null;
 
-  // 7. Media URLs (exclude avatar)
+  // ── Media URLs ────────────────────────────────────────────────────────────
   const imageEls = Array.from(
     el.querySelectorAll<HTMLImageElement>(WITHIN_POST.mediaImages),
   );
   const videoEls = Array.from(
     el.querySelectorAll<HTMLSourceElement>(WITHIN_POST.mediaVideos),
   );
-  // Also capture video poster attribute (Reel thumbnails)
   const videoPosterEls = Array.from(
     el.querySelectorAll<HTMLVideoElement>(WITHIN_POST.videoPoster),
   );
-  // Exclude profile/avatar images from media_urls.
-  // Instagram sets alt="<username>'s profile picture" / "profil resmi" on avatars.
-  // Also exclude images inside <nav> or <header> elements (logged-in user's nav pic).
+
+  // Exclude profile picture images (all fbcdn profile pics have "profil resmi"
+  // in their alt text; also exclude anything inside <nav> / <header>).
   const isAvatarImg = (img: HTMLImageElement): boolean => {
     const alt = (img.alt ?? "").toLowerCase();
     if (alt.includes("profile picture") || alt.includes("profil resmi")) return true;
-    // Exclude anything inside nav or header (top navigation bar avatars)
     if (img.closest("nav") || img.closest("header")) return true;
     return false;
   };
 
   const media_urls = [
-    // og:image first for MAIN/detail pages (SSR thumbnail, covers Reels that
-    // don't expose video[poster] in the DOM when the video is streaming)
-    ...(isMainContainer && ogImageUrl ? [ogImageUrl] : []),
-    // Video poster — gives the correct thumbnail for Reels with static poster
+    // og:image is the most reliable thumbnail for post/reel detail pages —
+    // included for ALL container types (dialog & main).
+    ...(ogImageUrl ? [ogImageUrl] : []),
+    // Fallback: static video poster (rare on Instagram but possible)
     ...videoPosterEls
       .map((v) => v.poster)
       .filter((src) => !!src && src !== author_avatar_url),
-    // Inline video sources
+    // Fallback: inline <source> video URLs
     ...videoEls.map((v) => v.src).filter((src) => !!src),
-    // Still images — avatars and nav images filtered out
+    // Fallback: visible content images (not profile pictures / nav)
     ...imageEls
       .filter((i) => !isAvatarImg(i))
       .map((i) => i.src)
@@ -274,6 +254,7 @@ function extractInstagramMetadata(el: Element): Partial<PostMetadata> | null {
     },
   };
 }
+
 
 // ── Button Injection ───────────────────────────────────────────────────────
 

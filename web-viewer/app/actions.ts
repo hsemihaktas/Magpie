@@ -24,3 +24,31 @@ export async function deletePost(postId: string): Promise<{ error: string | null
   revalidatePath("/feed"); // Refresh the feed after deletion
   return { error: null };
 }
+
+
+/**
+ * Renames a collection. RLS ensures the user can only update their own collections.
+ */
+export async function renameCollection(
+  collectionId: string,
+  newName: string
+): Promise<{ error: string | null }> {
+  const trimmed = newName.trim();
+  if (!trimmed) return { error: "Name cannot be empty" };
+  if (trimmed.length > 255) return { error: "Name too long" };
+
+  const supabase = createServerClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { error: "Not authenticated" };
+
+  const { error } = await supabase
+    .from("collections")
+    .update({ name: trimmed })
+    .eq("id", collectionId)
+    .eq("user_id", session.user.id);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/feed");
+  return { error: null };
+}

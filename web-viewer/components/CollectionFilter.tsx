@@ -1,11 +1,134 @@
 "use client";
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useState, useRef, useTransition } from "react";
 import type { Collection } from "@/lib/types";
+import { renameCollection } from "@/app/actions";
 
 interface CollectionFilterProps {
   collections: Collection[];
   activeId?: string;
+}
+
+function CollectionItem({
+  c,
+  isActive,
+  onNavigate,
+}: {
+  c: Collection;
+  isActive: boolean;
+  onNavigate: (id: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(c.name);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const startEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setValue(c.name);
+    setError(null);
+    setEditing(true);
+    setTimeout(() => inputRef.current?.select(), 50);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setValue(c.name);
+    setError(null);
+  };
+
+  const saveEdit = () => {
+    if (value.trim() === c.name) { cancelEdit(); return; }
+    startTransition(async () => {
+      const { error } = await renameCollection(c.id, value);
+      if (error) { setError(error); }
+      else { setEditing(false); setError(null); }
+    });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") saveEdit();
+    if (e.key === "Escape") cancelEdit();
+  };
+
+  if (editing) {
+    return (
+      <div className="px-3 py-1.5 space-y-1">
+        <div className="flex items-center gap-1.5">
+          <input
+            ref={inputRef}
+            type="text"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            maxLength={255}
+            autoFocus
+            className="flex-1 min-w-0 text-sm px-2 py-1 rounded-md border border-indigo-400 dark:border-indigo-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          <button
+            type="button"
+            onClick={saveEdit}
+            disabled={isPending}
+            className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 p-1 disabled:opacity-40"
+            aria-label="Save"
+          >
+            {isPending ? (
+              <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={cancelEdit}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1"
+            aria-label="Cancel"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        {error && <p className="text-xs text-red-500 dark:text-red-400 px-1">{error}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="group/item flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() => onNavigate(c.id)}
+        aria-current={isActive ? "page" : undefined}
+        className={`flex-1 min-w-0 text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors truncate ${
+          isActive
+            ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
+            : "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+        }`}
+      >
+        {c.name}
+      </button>
+      {/* Rename button — visible on hover */}
+      <button
+        type="button"
+        onClick={startEdit}
+        aria-label={`Rename ${c.name}`}
+        className="opacity-0 group-hover/item:opacity-100 p-1 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all shrink-0"
+      >
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+        </svg>
+      </button>
+    </div>
+  );
 }
 
 export default function CollectionFilter({ collections, activeId }: CollectionFilterProps) {
@@ -41,24 +164,15 @@ export default function CollectionFilter({ collections, activeId }: CollectionFi
         </button>
 
         {collections.length === 0 ? (
-          <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-600 italic">
-            No collections yet
-          </p>
+          <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-600 italic">No collections yet</p>
         ) : (
           collections.map((c) => (
-            <button
+            <CollectionItem
               key={c.id}
-              type="button"
-              onClick={() => navigate(c.id)}
-              aria-current={activeId === c.id ? "page" : undefined}
-              className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors truncate ${
-                activeId === c.id
-                  ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
-                  : "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-              }`}
-            >
-              {c.name}
-            </button>
+              c={c}
+              isActive={activeId === c.id}
+              onNavigate={navigate}
+            />
           ))
         )}
       </nav>

@@ -15,6 +15,8 @@
 
 import type { PostMetadata } from "../shared/types/domain";
 import { openModal } from "./modal";
+import { showToast } from "./toast";
+import type { PostMetadata } from "../shared/types/domain";
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 
@@ -112,17 +114,57 @@ function extractXMetadata(el: Element): Partial<PostMetadata> | null {
   const timeEl = el.querySelector<HTMLTimeElement>(WITHIN_TWEET.timestamp);
   const post_timestamp = timeEl?.getAttribute("datetime") ?? null;
 
-  // 6. Media URLs — photos and video sources, excluding the author avatar
+  // 6. Media — tweet photos + video poster thumbnails (X uses blob src, poster is the real URL)
   const photoEls = Array.from(
     el.querySelectorAll<HTMLImageElement>(WITHIN_TWEET.photo),
   );
-  const videoEls = Array.from(
-    el.querySelectorAll<HTMLSourceElement>(WITHIN_TWEET.video),
+  const videoPosterEls = Array.from(
+    el.querySelectorAll<HTMLVideoElement>("video[poster]"),
   );
   const media_urls: string[] = [
     ...photoEls.map((i) => i.src).filter((s) => s && s !== author_avatar_url),
-    ...videoEls.map((v) => v.src).filter((s) => !!s),
+    ...videoPosterEls.map((v) => v.getAttribute("poster") ?? "").filter(Boolean),
   ];
+
+  // 7. Quoted tweet — extract text + media from div[tabindex="0"][role="link"]
+  let quoted_suffix = "";
+  const quotedContainers = Array.from(
+    el.querySelectorAll<HTMLElement>('div[tabindex="0"][role="link"]'),
+  );
+  for (const container of quotedContainers) {
+    const quotedTextEl = container.querySelector<HTMLElement>(
+      '[data-testid="tweetText"]',
+    );
+    if (!quotedTextEl) continue; // not a tweet quote
+
+    // Author handle of quoted tweet
+    const quotedAuthorEl = container.querySelector(WITHIN_TWEET.authorName);
+    const quotedSpans = quotedAuthorEl?.querySelectorAll("span");
+    const quotedHandle = quotedSpans?.[1]?.textContent?.replace("@", "").trim() ?? "";
+    const quotedBody = quotedTextEl.textContent?.trim() ?? "";
+
+    if (quotedBody || quotedHandle) {
+      quoted_suffix = `\n\n↩ @${quotedHandle}: ${quotedBody}`;
+    }
+
+    // Quoted tweet media (photos + video posters)
+    const qPhotos = Array.from(
+      container.querySelectorAll<HTMLImageElement>('[data-testid="tweetPhoto"] img'),
+    );
+    const qPosters = Array.from(
+      container.querySelectorAll<HTMLVideoElement>("video[poster]"),
+    );
+    media_urls.push(
+      ...qPhotos.map((i) => i.src).filter((s) => s),
+      ...qPosters.map((v) => v.getAttribute("poster") ?? "").filter(Boolean),
+    );
+
+    break; // only the first quoted tweet
+  }
+
+  const final_content = content_text
+    ? content_text + quoted_suffix
+    : quoted_suffix || null;
 
   return {
     post_url,
@@ -131,7 +173,7 @@ function extractXMetadata(el: Element): Partial<PostMetadata> | null {
     author_username,
     author_display_name,
     author_avatar_url,
-    content_text,
+    content_text: final_content,
     media_urls,
     post_timestamp,
     raw_metadata: {
@@ -139,6 +181,78 @@ function extractXMetadata(el: Element): Partial<PostMetadata> | null {
       extracted_at: new Date().toISOString(),
     },
   };
+}
+
+
+// ── Default Collection (X) ─────────────────────────────────────────────────
+
+const X_DEFAULT_COL_KEY = "magpie_default_collection";
+
+interface XDefaultCollection {
+  id: string;
+  name: string;
+}
+
+async function getXDefaultCollection(): Promise<XDefaultCollection | undefined> {
+  try {
+    const stored = await chrome.storage.local.get(X_DEFAULT_COL_KEY);
+    return stored[X_DEFAULT_COL_KEY] as XDefaultCollection | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function resolveXDefaultFromServer(): Promise<XDefaultCollection | undefined> {
+  return new Promise((resolve) => {
+    if (!chrome.runtime?.id) { resolve(undefined); return; }
+    chrome.runtime.sendMessage(
+      { type: "GET_COLLECTIONS" },
+      (response: { success: boolean; data?: unknown }) => {
+        if (chrome.runtime.lastError || !response?.success) {
+          resolve(undefined);
+          return;
+        }
+        const d = response.data as {
+          collections?: Array<{ id: string; name: string; is_default?: boolean }>;
+        };
+        const cols = Array.isArray(d?.collections) ? d.collections : [];
+        if (cols.length === 0) { resolve(undefined); return; }
+        const chosen = cols.find((c) => c.is_default) ?? cols[0];
+        chrome.storage.local
+          .set({ [X_DEFAULT_COL_KEY]: { id: chosen.id, name: chosen.name } })
+          .catch(() => {});
+        resolve({ id: chosen.id, name: chosen.name });
+      },
+    );
+  });
+}
+
+async function xSaveToDefault(
+  meta: Partial<PostMetadata>,
+  col: XDefaultCollection,
+): Promise<boolean> {
+  if (!meta.post_url || !chrome.runtime?.id) return false;
+  try {
+    const response = (await chrome.runtime.sendMessage({
+      type: "SAVE_POST",
+      payload: {
+        post_url: meta.post_url,
+        collection_id: col.id,
+        post_type: meta.post_type ?? "",
+        platform: meta.platform ?? "",
+        author_username: meta.author_username ?? null,
+        author_display_name: meta.author_display_name ?? null,
+        author_avatar_url: meta.author_avatar_url ?? null,
+        content_text: meta.content_text ?? null,
+        media_urls: meta.media_urls ?? null,
+        post_timestamp: meta.post_timestamp ?? null,
+        raw_metadata: meta.raw_metadata ?? null,
+      },
+    })) as { success: boolean; error?: string };
+    return !!response?.success;
+  } catch {
+    return false;
+  }
 }
 
 // ── Collection Picker ──────────────────────────────────────────────────────
@@ -156,16 +270,48 @@ function extractXMetadata(el: Element): Partial<PostMetadata> | null {
  *
  * Requirements: 5.6, 7.12, 7.13, 11.1–11.3
  */
-function openXCollectionPicker(tweetEl: Element): void {
+async function openXCollectionPicker(tweetEl: Element): Promise<void> {
   const meta = extractXMetadata(tweetEl);
   if (!meta) {
-    // Requirement 7.13: abort when post_url cannot be extracted
     console.warn(
       "[Magpie] Could not determine the tweet URL. " +
         "Try navigating directly to the tweet page.",
     );
     return;
   }
+
+  if (!chrome.runtime?.id) {
+    showToast({ message: "Magpie yenilenmesi gerekiyor — F5 basın.", platform: "x" });
+    return;
+  }
+
+  // Try default collection (same pattern as Instagram)
+  let defaultCol = await getXDefaultCollection();
+  if (!defaultCol) {
+    defaultCol = await resolveXDefaultFromServer();
+  }
+
+  if (defaultCol) {
+    const ok = await xSaveToDefault(meta, defaultCol);
+    if (ok) {
+      showToast({
+        message: `Saved to ${defaultCol.name} ✓`,
+        platform: "x",
+        onChangeCollection: () => {
+          void openCollectionPickerX(meta);
+        },
+      });
+    } else {
+      // Save failed (e.g. duplicate) — let user pick manually
+      await openCollectionPickerX(meta);
+    }
+  } else {
+    // No default configured — open picker directly
+    await openCollectionPickerX(meta);
+  }
+}
+
+async function openCollectionPickerX(meta: Partial<PostMetadata>): Promise<void> {
   openModal(meta);
 }
 
@@ -218,7 +364,7 @@ function injectXSaveButton(tweetEl: Element): void {
     (e) => {
       e.stopImmediatePropagation(); // block X's native event handlers
       e.preventDefault();
-      openXCollectionPicker(tweetEl);
+      void openXCollectionPicker(tweetEl);
     },
     { capture: true }, // Requirement 5.6
   );

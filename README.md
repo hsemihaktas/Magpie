@@ -32,7 +32,7 @@
 
 ### Chrome Uzantısı
 - **Instagram desteği** — feed, `/p/` (dialog ve doğrudan URL), Reels, hikayeler
-- **X / Twitter desteği** — tweet thread'leri
+- **X / Twitter desteği** — tweetler, video poster thumbnail, alinti tweet metni
 - **Tek tıkla kaydet** — gönderinin üzerinde beliren arşiv butonu
 - **Varsayılan koleksiyon** — doğrudan kaydeder, gerek yoksa picker'ı görmezsin
 - **Akıllı metadata çıkarma** — caption, yazar, thumbnail (video frame dahil)
@@ -321,6 +321,7 @@ supabase migration new <isim> && supabase db push
 |---|---|
 | `SUPABASE_URL` | Supabase proje URL'si |
 | `SUPABASE_ANON_KEY` | Anonim (public) anahtar |
+| `WEB_VIEWER_URL` | Web goruntleyici URL |
 
 ### `web-viewer/.env.local`
 

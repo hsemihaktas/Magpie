@@ -17,9 +17,9 @@ jobs:
           # Gerçek kimliği tüm metin dosyalarında değiştir (LICENSE, README vb.)
           # Sıra önemli: önce uzun kalıplar, sonra kısalar
           grep -rIl --exclude-dir=node_modules --exclude-dir=.git \
-            -i -e "ORIJINAL_MAIL@ornek.com" -e "Hasan Semih Aktaş" -e "Hasan Semih Aktas" -e "Semih Aktaş" -e "Semih Aktas" -e "hsemihaktas" . \
+            -i -e "info.hsemihaktas@gmail.com" -e "Hasan Semih Aktaş" -e "Hasan Semih Aktas" -e "Semih Aktaş" -e "Semih Aktas" -e "hsemihaktas" . \
             | xargs -r sed -i \
-              -e 's/ORIJINAL_MAIL@ornek\.com/rewound1201@gmail.com/gI' \
+              -e 's/info.hsemihaktas@gmail\.com/rewound1201@gmail.com/gI' \
               -e 's/Hasan Semih Aktaş/Rewosama/gI' \
               -e 's/Hasan Semih Aktas/Rewosama/gI' \
               -e 's/Semih Aktaş/Rewosama/gI' \

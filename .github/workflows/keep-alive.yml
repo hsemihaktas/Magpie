@@ -1,0 +1,24 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    - cron: '0 9 */3 * *'  # Her 3 günde bir, 09:00 UTC
+  workflow_dispatch:        # Manuel test için
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}")
+          echo "Response status: $STATUS"
+          # 0 = bağlantı kurulamadı, 5xx = server hatası → gerçek sorun
+          # 2xx, 4xx = server ayakta (401 bile "alive" demek)
+          if [ "$STATUS" -eq 0 ] || [ "$STATUS" -ge 500 ]; then
+            echo "✗ Supabase unreachable or server error: $STATUS"
+            exit 1
+          fi
+          echo "✓ Supabase is alive (status: $STATUS)"

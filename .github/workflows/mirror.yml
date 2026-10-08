@@ -1,21 +1,37 @@
-name: Mirror to another repository
+name: Mirror to showcase
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   mirror:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # full history
+      - uses: actions/checkout@v4
 
-      - name: Push to mirror
+      - name: Push clean snapshot to showcase
+        env:
+          TOKEN: ${{ secrets.SHOWCASE_TOKEN }}
         run: |
-          git remote add mirror https://x-access-token:${{ secrets.MIRROR_TOKEN }}@github.com/KULLANICI_ADI/REPO_ADI.git
-          git push mirror main --force
+          # Gerçek kimliği tüm metin dosyalarında değiştir (LICENSE, README vb.)
+          # Sıra önemli: önce uzun kalıplar, sonra kısalar
+          grep -rIl --exclude-dir=node_modules --exclude-dir=.git \
+            -i -e "ORIJINAL_MAIL@ornek.com" -e "Hasan Semih Aktaş" -e "Hasan Semih Aktas" -e "Semih Aktaş" -e "Semih Aktas" -e "hsemihaktas" . \
+            | xargs -r sed -i \
+              -e 's/ORIJINAL_MAIL@ornek\.com/rewound1201@gmail.com/gI' \
+              -e 's/Hasan Semih Aktaş/Rewosama/gI' \
+              -e 's/Hasan Semih Aktas/Rewosama/gI' \
+              -e 's/Semih Aktaş/Rewosama/gI' \
+              -e 's/Semih Aktas/Rewosama/gI' \
+              -e 's/hsemihaktas/Rewosama/gI'
+
+          # Geçmişi ve workflow'u at, temiz repo başlat
+          rm -rf .git .github
+          git init -b main
+          git config user.name "Rewosama"
+          git config user.email "92674014+Rewosama@users.noreply.github.com"
+          git add -A
+          git commit -m "Showcase"
+          git remote add showcase https://x-access-token:${TOKEN}@github.com/Rewosama/Magpie.git
+          git push showcase main --force

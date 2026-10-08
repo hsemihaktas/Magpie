@@ -25,6 +25,34 @@ function extractCollections(data: unknown): Collection[] {
 
 
 
+// Build-time injected by esbuild from .env
+/** chrome.storage.local key for cached collections */
+const COLLECTIONS_CACHE_KEY = "magpie_collections_cache";
+const THEME_CACHE_KEY = "magpie_popup_theme";
+
+function applyTheme(dark: boolean): void {
+  document.documentElement.classList.toggle("dark", dark);
+  const btn = document.getElementById("theme-btn");
+  if (btn) btn.innerHTML = dark ? sunIconSvg() : moonIconSvg();
+}
+
+async function toggleTheme(): Promise<void> {
+  const isDark = document.documentElement.classList.contains("dark");
+  const next = !isDark;
+  applyTheme(next);
+  chrome.storage.local.set({ [THEME_CACHE_KEY]: next ? "dark" : "light" }).catch(() => {});
+}
+
+function moonIconSvg(): string {
+  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+}
+
+function sunIconSvg(): string {
+  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`;
+}
+
+const WEB_VIEWER_URL: string = process.env.WEB_VIEWER_URL ?? "http://localhost:3001";
+
 // ── Module state ──────────────────────────────────────────────────────────────
 
 /**
@@ -96,12 +124,16 @@ function renderLoadingState(): void {
  * Requirement 12.1
  */
 function renderLoginView(errorMsg?: string): void {
+  const isDark = document.documentElement.classList.contains("dark");
   getApp().innerHTML = `
     <div class="login-container">
+      <button id="theme-btn-login" class="btn btn--icon login-theme-btn" type="button" title="Temayı değiştir">
+        ${isDark ? sunIconSvg() : moonIconSvg()}
+      </button>
       <div class="login-header">
         <div class="login-logo" aria-hidden="true">
-          <img src="../../icons/icon128.png" alt="Magpie" width="64" height="64"
-               style="border-radius:16px;display:block;" />
+          <img src="../../icons/icon128.png" alt="Magpie" width="72" height="72"
+               style="border-radius:18px;display:block;" />
         </div>
         <h1 class="login-title">Magpie</h1>
         <p class="login-subtitle">Save posts from Instagram and X to your private archive</p>
@@ -128,6 +160,9 @@ function renderLoginView(errorMsg?: string): void {
 
   document.getElementById("login-btn")?.addEventListener("click", () => {
     void handleLogin();
+  });
+  document.getElementById("theme-btn-login")?.addEventListener("click", () => {
+    void toggleTheme().then(() => renderLoginView(errorMsg));
   });
 }
 
@@ -245,35 +280,61 @@ function showCollectionViewError(msg: string): void {
  *
  * Requirements: 13.1, 13.2, 13.3, 13.9
  */
-export function renderCollectionView(cols: Collection[] | unknown = []): void {
+export function renderCollectionView(cols: Collection[] | unknown = [], showSpinner = false): void {
   // Defensive: handle non-array input gracefully
   const safeArray: Collection[] = Array.isArray(cols) ? (cols as Collection[]) : [];
   console.log("[Magpie] renderCollectionView called with", safeArray.length, "items");
   collections = [...safeArray];
 
+  const isDark = document.documentElement.classList.contains("dark");
   const listItemsHtml =
-    safeArray.length === 0
-      ? '<p class="empty-message">No collections yet</p>'
-      : safeArray.map(collectionItemHtml).join("");
+    showSpinner
+      ? '<div class="collections-loading"><div class="loading-spinner" aria-label="Yükleniyor…" role="status"></div></div>'
+      : safeArray.length === 0
+        ? '<p class="empty-message">No collections yet</p>'
+        : safeArray.map(collectionItemHtml).join("");
 
   getApp().innerHTML = `
     <div class="collections-container">
       <div class="collections-header">
         <h1 class="collections-title">My Collections</h1>
-        <button id="logout-btn" class="btn btn--text btn--small" type="button">
-          Log out
-        </button>
+        <div class="header-actions">
+          <button id="theme-btn" class="btn btn--icon" type="button" title="Temayı değiştir">
+            ${isDark ? sunIconSvg() : moonIconSvg()}
+          </button>
+          <button id="logout-btn" class="btn btn--logout" type="button" title="Çıkış yap">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          </button>
+        </div>
       </div>
       <div class="collections-list" id="collections-list">
         ${listItemsHtml}
-        ${addSectionHtml()}
+        ${showSpinner ? "" : addSectionHtml()}
+      </div>
+      <div class="collections-footer">
+        <button id="open-web-btn" class="web-archive-btn" type="button">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          <span>Web Arşivini Aç</span>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="arrow" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
       </div>
     </div>
   `;
 
+  // Theme toggle
+  document.getElementById("theme-btn")?.addEventListener("click", () => {
+    void toggleTheme();
+  });
+
   // Logout wiring (Req 13.9, 13.10)
   document.getElementById("logout-btn")?.addEventListener("click", () => {
     void handleLogout();
+  });
+
+  // Open web viewer
+  document.getElementById("open-web-btn")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    chrome.tabs.create({ url: WEB_VIEWER_URL }).catch(() => {});
   });
 
   // Single delegated listener handles all collection list interactions
@@ -707,10 +768,24 @@ async function init(): Promise<void> {
     return;
   }
 
-  // Step 2: Show collection view immediately — DO NOT let this fail to login
-  renderCollectionView([]);
+  // Step 2: Apply saved theme before rendering
+  try {
+    const themeStore = await chrome.storage.local.get(THEME_CACHE_KEY);
+    const savedTheme = themeStore[THEME_CACHE_KEY] as string | undefined;
+    applyTheme(savedTheme === "dark");
+  } catch { /* ignore */ }
 
-  // Step 3: Load collections in background — failure here stays on collection view
+  // Step 3: Show cached collections immediately (zero-wait UX)
+  try {
+    const cached = await chrome.storage.local.get(COLLECTIONS_CACHE_KEY);
+    const cachedCols = (cached[COLLECTIONS_CACHE_KEY] as Collection[] | undefined) ?? [];
+    // Show spinner only if cache is empty (first ever open or cleared cache)
+    renderCollectionView(cachedCols, cachedCols.length === 0);
+  } catch {
+    renderCollectionView([], true);
+  }
+
+  // Step 4: Refresh collections in background — failure here stays on collection view
   try {
     const collectionsResp = await chrome.runtime.sendMessage<
       OutboundMessage,
@@ -718,7 +793,10 @@ async function init(): Promise<void> {
     >({ type: "GET_COLLECTIONS" });
 
     if (collectionsResp?.success && collectionsResp?.data) {
-      renderCollectionView(extractCollections(collectionsResp.data));
+      const cols = extractCollections(collectionsResp.data);
+      renderCollectionView(cols);
+      // Cache for next open
+      chrome.storage.local.set({ [COLLECTIONS_CACHE_KEY]: cols }).catch(() => {});
     }
   } catch (e) {
     console.warn("[Magpie] init: GET_COLLECTIONS failed (staying on collection view):", e);

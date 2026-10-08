@@ -116,9 +116,8 @@ serve(async (req: Request): Promise<Response> => {
 
   // ── list ──────────────────────────────────────────────────────────────────
   if (op === "list") {
-    // Requirement 9.3: return all collections for the authenticated user,
-    // ordered by created_at ASC
-    const { data: collections, error: listError } = await supabase
+    // 1. Own collections
+    const { data: ownedCols, error: listError } = await supabase
       .from("collections")
       .select("*")
       .eq("user_id", userId)
@@ -127,6 +126,33 @@ serve(async (req: Request): Promise<Response> => {
     if (listError) {
       return jsonResponse({ error: "Failed to fetch collections" }, 500);
     }
+
+    // 2. Collections where user is a collaborator member
+    const { data: memberships } = await supabase
+      .from("collection_members")
+      .select("collection_id, member_role")
+      .eq("member_user_id", userId)
+      .eq("member_role", "collaborator");
+
+    let sharedCols: unknown[] = [];
+    if (memberships && memberships.length > 0) {
+      const sharedIds = memberships.map((m: Record<string, string>) => m.collection_id);
+      const { data: cols } = await supabase
+        .from("collections")
+        .select("*")
+        .in("id", sharedIds);
+      sharedCols = (cols ?? []).map((col: Record<string, unknown>) => ({
+        ...col,
+        is_shared: true,
+        member_role: (memberships as Array<{collection_id: string; member_role: string}>)
+          .find((m) => m.collection_id === col.id)?.member_role ?? "collaborator",
+      }));
+    }
+
+    const collections = [
+      ...(ownedCols ?? []).map((c: Record<string, unknown>) => ({ ...c, is_shared: false })),
+      ...sharedCols,
+    ];
 
     return jsonResponse({ collections }, 200);
   }

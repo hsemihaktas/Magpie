@@ -100,12 +100,8 @@ function renderLoginView(errorMsg?: string): void {
     <div class="login-container">
       <div class="login-header">
         <div class="login-logo" aria-hidden="true">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28"
-               fill="#4f46e5" aria-hidden="true">
-            <path d="M20 3H4a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1v11a1 1 0 0 0 1 1h14a1 1 0
-              0 0 1-1V8a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1zm-1 15H5V8h14v10zM5 6V5h14v1H5zm7
-              4H9v2h3v2h2v-2h3v-2h-3V8h-2v2z"/>
-          </svg>
+          <img src="../../icons/icon128.png" alt="Magpie" width="64" height="64"
+               style="border-radius:16px;display:block;" />
         </div>
         <h1 class="login-title">Magpie</h1>
         <p class="login-subtitle">Save posts from Instagram and X to your private archive</p>

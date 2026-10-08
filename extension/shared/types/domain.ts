@@ -22,6 +22,10 @@ export interface Collection {
   created_at: string;
   /** Whether this is the user's default save target (at most one per user) */
   is_default: boolean;
+  /** True when this is a shared collection the user has collaborator access to */
+  is_shared?: boolean;
+  /** For shared collections: the user's role ('collaborator') */
+  member_role?: string;
 }
 
 /**

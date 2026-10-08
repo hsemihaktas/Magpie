@@ -104,3 +104,23 @@ export function createMiddlewareSupabaseClient(
 export function createBrowserClient() {
   return createClient(supabaseUrl!, supabaseAnonKey!);
 }
+
+// ── Service-Role (Admin) client ──────────────────────────────────────────────
+
+/**
+ * Returns a Supabase client using the service role key — bypasses RLS entirely.
+ * ONLY import this inside Server Actions or Route Handlers.
+ * NEVER import in Client Components, shared utilities, or anywhere accessible to the browser.
+ */
+export function createAdminClient() {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) {
+    throw new Error(
+      "Missing SUPABASE_SERVICE_ROLE_KEY. Add it to .env.local. " +
+        "Never expose this key client-side."
+    );
+  }
+  return createClient(supabaseUrl!, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}

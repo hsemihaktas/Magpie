@@ -176,8 +176,8 @@ serve(async (req: Request): Promise<Response> => {
   const user = userData.user;
   const collectionId = body["collection_id"] as string;
 
-  // ── Step 4: Verify collection ownership (Requirement 8.6) ─────────────────
-  const { data: collectionRow, error: collectionError } = await supabase
+  // ── Step 4: Verify collection ownership OR collaborator membership ──────────
+  const { data: ownedCollection, error: collectionError } = await supabase
     .from("collections")
     .select("id")
     .eq("id", collectionId)
@@ -191,8 +191,22 @@ serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  if (!collectionRow) {
-    return jsonResponse({ error: "collection_id not owned by user" }, 403);
+  let hasCollectionAccess = !!ownedCollection;
+
+  if (!hasCollectionAccess) {
+    // Also allow collaborator members to save to shared collections
+    const { data: membership } = await supabase
+      .from("collection_members")
+      .select("id")
+      .eq("collection_id", collectionId)
+      .eq("member_user_id", user.id)
+      .eq("member_role", "collaborator")
+      .maybeSingle();
+    hasCollectionAccess = !!membership;
+  }
+
+  if (!hasCollectionAccess) {
+    return jsonResponse({ error: "collection_id not accessible by user" }, 403);
   }
 
   // ── Step 5: Check if (user_id, post_url) already exists ───────────────────

@@ -45,10 +45,20 @@ function parseJsonLd(): Record<string, unknown> | undefined {
  *  Eğer ": " içeriyorsa sonrasını caption kabul et.
  */
 function parseOgDescription(description: string): string | undefined {
+  if (!description) return undefined;
+
+  // A: Sondaki tırnak içi metin — "...date: \"caption text\"."
+  // Akıllı tırnak (“”) veya düz tırnak
+  const quoted = description.match(/:\s*["“”„](.+)["“”‟]\.?\s*$/s);
+  if (quoted?.[1]) return quoted[1].trim();
+
+  // B: İki noktadan sonraki bölüm — "...date: caption text"
   const colonIdx = description.indexOf(": ");
-  if (colonIdx > 0 && colonIdx < 120) {
-    return description.substring(colonIdx + 2).trim() || undefined;
+  if (colonIdx > 0 && colonIdx < 150) {
+    const rest = description.substring(colonIdx + 2).trim();
+    if (rest.length > 0) return rest;
   }
+
   return description.trim() || undefined;
 }
 
@@ -68,9 +78,13 @@ interface PageFallbackData {
  */
 export function getPageFallbackData(): PageFallbackData {
   const ogImage = getMeta("og:image");
-  const ogVideo = getMeta("og:video") ?? getMeta("og:video:url");
+  const ogVideo =
+    getMeta("og:video") ??
+    getMeta("og:video:url") ??
+    getMeta("og:video:secure_url");
   const ogDesc = getMeta("og:description");
   const ogTitle = getMeta("og:title");
+  const ogType = getMeta("og:type"); // "video.other" for Reels
 
   let caption: string | undefined;
   if (ogDesc) caption = parseOgDescription(ogDesc);

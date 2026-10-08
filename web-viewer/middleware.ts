@@ -72,7 +72,8 @@ export const config = {
      *   - _next/image   (image optimisation endpoint)
      *   - favicon.ico   (browser favicon request)
      *   - auth/callback (Supabase OAuth exchange — must run unauthenticated)
+     *   - public static files: .png .jpg .svg .ico .webp .gif .woff2
      */
-    "/((?!_next/static|_next/image|favicon\\.ico|auth/callback).*)",
+    "/((?!_next/static|_next/image|favicon\.ico|auth/callback|.*\.(?:png|jpg|jpeg|svg|ico|webp|gif|woff2?|ttf|eot)).*)",
   ],
 };

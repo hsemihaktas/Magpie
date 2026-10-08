@@ -1,152 +1,337 @@
-# Magpie
+<div align="center">
+  <img src="web-viewer/app/icon-512.png" alt="Magpie" width="120" height="120" />
 
-> Save what matters from Instagram and X - silently, privately, yours forever.
+  # Magpie
 
-Magpie is a two-part personal content archiving system. A Chrome Extension quietly saves posts, reels, stories, and tweets to your own Supabase database without triggering any native platform interaction. A companion Web Viewer lets you browse, search, and revisit everything you saved.
+  **Sosyal medya postlarını arşivleyen Chrome uzantısı ve web görüntüleyicisi.**
+  Instagram ve X'ten istediğin postları koleksiyonlarına sessizce kaydet,
+  web arayüzünden dilediğin zaman gözbat. Paylaş, ortak çalış.
 
-## Why Magpie?
+  ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&logoColor=white)
+  ![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)
+  ![Supabase](https://img.shields.io/badge/Supabase-Postgres+Auth+RLS-3fcf8e?logo=supabase)
+  ![Chrome MV3](https://img.shields.io/badge/Chrome_Extension-MV3-4285f4?logo=googlechrome&logoColor=white)
+</div>
 
-Social media algorithms learn from every interaction. Liking or saving a post tells the platform what to show you more of - which gradually warps your feed. Magpie lets you collect what genuinely interests you without feeding that data back to the platform.
+---
 
-Like the magpie bird that collects shiny things for its own nest, you collect the content you care about - for yourself.
+## İçindekiler
 
-## Features
+- [Özellikler](#özellikler)
+- [Mimari](#mimari)
+- [Proje Yapısı](#proje-yapısı)
+- [Kurulum](#kurulum)
+- [Kullanım](#kullanım)
+- [Koleksiyon Türleri](#koleksiyon-türleri)
+- [Veritabanı Şeması](#veritabanı-şeması)
+- [Geliştirme](#geliştirme)
 
-### Chrome Extension
-- Injected save button on every Instagram post, reel, story and X/Twitter tweet
-- Collection picker modal (inspired by Instagram save-to-collection UI)
-- Change collection shortcut in the success toast
-- Popup collection manager: create, rename, delete collections
-- Google OAuth login synced across Chrome instances via chrome.storage.sync
-- Secure: credentials never touch content scripts; all API calls go through the Background Service Worker
+---
 
-### Web Viewer
-- Private feed gated behind Google login
-- Collection filter sidebar
-- Full-text keyword search across captions and tweet text
-- Go to Original: one-click jump to the original post
-- Persistent thumbnails cached to Supabase Storage
+## Özellikler
 
-## Tech Stack
+### Chrome Uzantısı
+- **Instagram desteği** — feed, `/p/` (dialog ve doğrudan URL), Reels, hikayeler
+- **X / Twitter desteği** — tweet thread'leri
+- **Tek tıkla kaydet** — gönderinin üzerinde beliren arşiv butonu
+- **Varsayılan koleksiyon** — doğrudan kaydeder, gerek yoksa picker'ı görmezsin
+- **Akıllı metadata çıkarma** — caption, yazar, thumbnail (video frame dahil)
+- **Tekrar kaydetme koruması** — aynı postu iki kez eklemez
 
-| Component | Technology |
-|-----------|------------|
-| Chrome Extension | Manifest V3, TypeScript, esbuild |
-| Web Viewer | Next.js 14+ App Router, TypeScript, Tailwind CSS |
-| Backend | Supabase (Auth, PostgreSQL, Edge Functions, Storage) |
-| Edge Functions | Deno, TypeScript |
-| Rate Limiting | Deno KV sliding window per-user |
-| Testing | fast-check, Jest/Vitest, Deno test |
+### Web Görüntüleyici
+- **Koleksiyon yönetimi** — oluştur, yeniden adlandır, varsayılan belirle
+- **Toplu silme** — birden fazla postu seç ve tek seferde sil
+- **Arama** — caption içinde tam metin arama
+- **Koleksiyon filtreleme** — sol kenar çubuğundan tek tıkla
+- **Karanlık mod** — sistem tercihin otomatik uygulanır
 
-## Architecture
+### Paylaşım & İşbirliği
+- **Paylaşımlı Koleksiyon** — tek kullanımlık 24 saatlik davet kodu, sadece okuma erişimi
+- **Ortak Koleksiyon** — post ekleyebilir, kendi postunu silebilir, yeni ortak davet edebilir
+- **Erişim iptali** — istediğin zaman herhangi bir üyeyi kaldır
+- **RLS koruması** — yetki kontrolleri Postgres RLS ile de uygulanır
 
-Chrome Browser
-  Content Script (instagram.js / x.js)
-    Injects save button, scrapes metadata, renders modal & toast
-  Background Service Worker
-    Manages Google OAuth session via chrome.storage.sync
-    Handles JWT lifecycle + proactive refresh
-    Sole caller of Supabase Edge Functions
-  Extension Popup
-    Login view (Google OAuth)
-    Collection management (CRUD)
+---
 
-Supabase Project
-  Auth: Google OAuth provider
-  Edge Functions: save-post, manage-collection (JWT + rate limiting)
-  PostgreSQL: collections, saved_posts tables with RLS
-  Storage: thumbnails bucket (async media caching)
-
-Web Viewer (Next.js 14+)
-  /login          - Google OAuth sign-in
-  /feed           - Saved posts grid with collection filter + text search
-  /auth/callback  - OAuth callback handler
-
-## Security Model
-
-| Layer | Component | Enforcement |
-|-------|-----------|-------------|
-| Browser | Content Script | Zero trust - messages only, no secrets |
-| Extension | Background Service Worker | Sole holder of JWT + sole caller of Edge Functions |
-| Server | Edge Functions | JWT verify + ownership check + rate limit |
-| Database | PostgreSQL RLS | user_id = auth.uid() |
-
-Rate limiting: 60 req/min (save-post), 30 req/min (manage-collection) per user.
-Service role key never leaves Edge Functions.
-
-## Project Structure
+## Mimari
 
 ```
-extension/
-  manifest.json                -- MV3, permissions, content scripts       [DONE]
-  package.json + build.mjs     -- esbuild TypeScript toolchain             [DONE]
-  tsconfig.json                -- Strict TS, ES2020                        [DONE]
-  background/service-worker.ts          -- JWT storage with sync/local fallback [DONE]
-  content-scripts/instagram.ts -- Instagram button injection + scraping    [DONE]
-  content-scripts/x.ts         -- X/Twitter injection                      [DONE]
-  popup/popup.html             -- Base HTML shell                           [DONE]
-  popup/popup.ts               -- Login + collections UI                   [DONE]
-  shared/types/domain.ts       -- Collection, SavedPost, PostMetadata...   [DONE]
-  shared/types/messages.ts     -- Message protocol + ErrorCode             [DONE]
-  styles/modal.css + toast.css -- Overlay styles                           [DONE]
-  icons/icon16,48,128.png      -- Placeholder icons                        [DONE]
-
-web-viewer/
-  package.json                 -- Next.js 14, Tailwind, Supabase deps      [DONE]
-  app/layout.tsx               -- Root layout with Tailwind                [DONE]
-  app/page.tsx                 -- Redirect to /feed or /login              [DONE]
-  app/login/page.tsx             -- Google OAuth login page [DONE]
-  app/feed/page.tsx              -- Feed server component + queries [DONE]
-  app/auth/callback/route.ts   -- OAuth callback handler [DONE]
-  components/                  -- PostCard, CollectionFilter, SearchBar    [DONE]
-  lib/supabase.ts              -- Server/middleware/browser helpers        [DONE]
-  lib/filters.ts               -- Text search + collection filter          [DONE]
-
-supabase/
-  migrations/001_collections_table.sql -- collections table + pgcrypto    [DONE]
-  migrations/002_saved_posts_table.sql -- saved_posts + UNIQUE + GIN      [DONE]
-  functions/save-post/index.ts          -- JWT verify + upsert (partial) [DONE]
-  functions/manage-collection/index.ts -- CRUD (list+create done) [DONE]
-  functions/shared/rate-limit.ts       -- Deno KV sliding window [DONE]
++---------------------------+   +------------------------+
+|     Chrome Uzantısı       |   |   Web Görüntüleyici    |
+|   (MV3 / TypeScript)     |   |  (Next.js 14 App)      |
+|                          |   |                        |
+|  content-scripts/        |   |  app/actions.ts        |
+|  +- instagram/           |   |  components/           |
+|  |  +- button-injector   |   |  +- CollectionFilter   |
+|  |  +- metadata-extractor|   |  +- PostCard           |
+|  |  +- observer          |   |  +- ShareModal         |
+|  |  +- route-listener    |   |  +- JoinModal          |
+|  +- x.ts                 |   |  +- ManageMembersModal |
+|  background/sw.ts        |   |  lib/supabase.ts       |
++---------------------------+   +------------------------+
+              |                          |
+              v                          v
++----------------------------------------------------------+
+|                       Supabase                          |
+|  Postgres DB         Auth              Storage          |
+|  +- collections      +- Google OAuth   +- thumbnails/  |
+|  +- saved_posts      +- Email                          |
+|  +- collection_invites                                  |
+|  +- collection_members                                  |
+|                                                         |
+|  SECURITY DEFINER fonksiyonlar:                         |
+|  +- redeem_invite()                                     |
+|  +- get_members_with_email()                            |
+|  +- get_shared_collections_with_owner()                 |
++----------------------------------------------------------+
 ```
 
-## Setup
+---
 
-### 1 - Supabase Database
-Run migrations in order in the Supabase SQL editor:
+## Proje Yapısı
+
 ```
-supabase/migrations/001_collections_table.sql
-supabase/migrations/002_saved_posts_table.sql
+magpie/
++-- extension/                    Chrome Uzantısı (MV3)
+|   +-- manifest.json
+|   +-- build.mjs                 esbuild yapılandırması
+|   +-- content-scripts/
+|   |   +-- instagram/            Modüler Instagram içerik scripti
+|   |   |   +-- button-injector.ts
+|   |   |   +-- metadata-extractor.ts
+|   |   |   +-- observer.ts       MutationObserver (SPA desteği)
+|   |   |   +-- route-listener.ts, permalink.ts, storage.ts...
+|   |   +-- x.ts, modal.ts, toast.ts
+|   +-- background/service-worker.ts
+|   +-- popup/, shared/, icons/
+|
++-- web-viewer/                   Next.js 14 Web Uygulaması
+|   +-- app/actions.ts            Tüm sunucu aksiyonları
+|   +-- app/feed/page.tsx         Ana feed sayfası
+|   +-- components/
+|   |   +-- CollectionFilter.tsx, PostCard.tsx, PostCardList.tsx
+|   |   +-- ShareModal.tsx, JoinCollectionModal.tsx
+|   |   +-- ManageMembersModal.tsx, SearchBar.tsx, ThemeToggle.tsx
+|   +-- lib/supabase.ts, types.ts, invite-code.ts
+|
++-- supabase/migrations/
+    +-- 001_collections_table.sql
+    +-- 002_saved_posts_table.sql
+    +-- 003_rls_policies.sql
+    +-- 004_storage_bucket.sql
+    +-- 005_collections_is_default.sql
+    +-- 006_backfill_is_default.sql
+    +-- 007_collection_sharing_tables.sql
+    +-- 008_collection_sharing_rls.sql
+    +-- 009_collaborative_collection.sql
 ```
 
-### 2 - Chrome Extension
+---
+
+## Kurulum
+
+### Ön Gereksinimler
+
+- Node.js 18+
+- [Supabase CLI](https://supabase.com/docs/guides/cli) — `brew install supabase/tap/supabase`
+- Google Chrome
+
+### 1. Supabase Projesi
+
+```bash
+supabase link --project-ref <proje-ref>
+supabase db push
+```
+
+Dashboard → Settings → API:
+- **Project URL** → `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL`
+- **anon public** → `SUPABASE_ANON_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- **service_role** → `SUPABASE_SERVICE_ROLE_KEY` *(yalnızca sunucu tarafı)*
+
+### 2. Chrome Uzantısı
+
 ```bash
 cd extension
+cp .env.example .env
 npm install
-npm run build   # output goes to extension/dist/
-# Load unpacked in chrome://extensions - select the extension/ folder
+npm run build
 ```
 
-### 3 - Web Viewer
+`chrome://extensions` → Geliştirici modu → Paketlenmemişi yükle → `extension/` seç.
+
+### 3. Web Görüntüleyici
+
 ```bash
 cd web-viewer
+cp .env.example .env.local
 npm install
-cp .env.example .env.local   # fill in your Supabase URL + anon key
-npm run dev
+npm run dev   # http://localhost:3000
 ```
 
-## Platform Support
+---
 
-| Platform | Status | Post Types |
-|----------|--------|------------|
-| Instagram | Phase 1 | Posts, Reels, Stories |
-| X (Twitter) | Phase 2 | Tweets, Media tweets, Retweets |
+## Kurulum
 
-## Spec & Planning
+### Ön Gereksinimler
 
-Full planning documents in .kiro/specs/social-content-saver/ (local only, not tracked by git):
-- requirements.md -- 19 requirements with EARS-format acceptance criteria
-- design.md -- System architecture, component design, 14 correctness properties
-- tasks.md -- 21 implementation tasks with property-based test coverage
+- Node.js 18+
+- [Supabase CLI](https://supabase.com/docs/guides/cli)
+- Google Chrome
 
-  migrations/004_storage_bucket.sql    -- thumbnails bucket creation        [DONE]
+### 1. Supabase Projesi
+
+```bash
+supabase link --project-ref <proje-ref>
+supabase db push
+```
+
+Dashboard → Settings → API:
+- **Project URL** → `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL`
+- **anon public** → `SUPABASE_ANON_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- **service_role** → `SUPABASE_SERVICE_ROLE_KEY` *(yalnızca sunucu tarafı)*
+
+### 2. Chrome Uzantısı
+
+```bash
+cd extension
+cp .env.example .env
+npm install
+npm run build
+```
+
+`chrome://extensions` → Geliştirici modu → Paketlenmemişi yükle → `extension/` seç.
+
+### 3. Web Görüntüleyici
+
+```bash
+cd web-viewer
+cp .env.example .env.local
+npm install
+npm run dev   # http://localhost:3000
+```
+
+---
+
+## Kullanım
+
+### Uzantıyla Post Kaydetme
+
+1. Instagram veya X'te bir postun üzerine gel.
+2. Sağ üst köşede beliren **arşiv butonuna** tıkla.
+3. İlk kullanımda koleksiyon seçici açılır.
+4. Sonraki kaydetmelerde varsayılan koleksiyona doğrudan gider.
+5. Toast'taki **"Değiştir"** linki ile koleksiyon değiştirilebilir.
+
+### Web Görüntüleyicide Yönetim
+
+| Eylem | Nasıl |
+|---|---|
+| Koleksiyon yeniden adlandır | Kenar çubuğunda üzerine gel → kalem ikonu |
+| Varsayılan değiştir | üzerine gel → yıldız ikonu |
+| Post sil | Kartın üzerine gel → kirmizi çöp ikonu |
+| Birden fazla sil | **Seç** → kartlara tıkla → **Sil** |
+| Koleksiyona filtrele | Sol kenarda koleksiyon adına tıkla |
+| Arama | Üsteki arama çubuğu |
+| Koleksiyon paylaş | Paylaş ikonu → kodu kopyala |
+| Koleksiyona katıl | Kenar çubuğu altı → **Koleksiyona Katıl** |
+
+---
+
+## Koleksiyon Türleri
+
+### Kişisel Koleksiyon
+Yalnızca sahibi görür, ekler, siler.
+
+### Paylaşımlı Koleksiyon (Görüntüleyici)
+- Sahip tek kullanımlık 24 saatlik davet kodu üretir.
+- Davet edilen kişi yalnızca **okuyabilir** — ekleyemez, silemez.
+- Sahip herhangi bir üyeyi istediği zaman kaldırabilir.
+
+### Ortak Koleksiyon (Collaborator)
+- Sahip **"Ortak"** rolü seçip davet kodu üretir.
+- Ortak üye:
+  - Post **ekleyebilir** (uzantısıyla bu koleksiyonu varsayılan yaparak)
+  - Yalnızca **kendi** eklediğini **silebilir**
+  - Yeni ortak **davet edebilir**
+- RLS politikaları bu kuralları veritabanı seviyesinde de uygular.
+
+---
+
+## Veritabanı Şeması
+
+```sql
+-- Koleksiyonlar
+collections (id, user_id, name, is_default, created_at)
+
+-- Kaydedilen postlar
+saved_posts (id, user_id, collection_id, post_url, post_type,
+             platform, author_username, author_display_name,
+             author_avatar_url, content_text, media_urls,
+             thumbnail_url, post_timestamp, saved_at, raw_metadata)
+
+-- Davet kodları (24 saat, tek kullanım)
+collection_invites (id, collection_id, created_by,
+                    code CHAR(8) UNIQUE,
+                    grants_role TEXT,   -- 'viewer' | 'collaborator'
+                    expires_at, used_at, used_by)
+
+-- Koleksiyon üyeliği
+collection_members (id, collection_id, member_user_id,
+                    member_role TEXT,   -- 'viewer' | 'collaborator'
+                    joined_at)
+```
+
+### RLS Politikaları (özet)
+
+| Tablo | Erişim |
+|---|---|
+| `collections` | Sahip: tam · Üye: SELECT |
+| `saved_posts` | Sahip: tam · viewer: SELECT · collaborator: SELECT + INSERT/DELETE (kendi) |
+| `collection_invites` | Sahip: SELECT · Yazma: admin client |
+| `collection_members` | Üye: kendi · Sahip: koleksiyonundaki hepsi |
+
+---
+
+## Geliştirme
+
+```bash
+# Uzantı — derleme
+cd extension && npm run build
+
+# Uzantı — izleme modunda
+cd extension && npm run watch
+
+# Web — geliştirme sunucusu
+cd web-viewer && npm run dev
+
+# Tip denetimi
+cd web-viewer && npx tsc --noEmit
+
+# Yeni migration
+supabase migration new <isim> && supabase db push
+```
+
+---
+
+## Ortam Değişkenleri
+
+### `extension/.env`
+
+| Değişken | Açıklama |
+|---|---|
+| `SUPABASE_URL` | Supabase proje URL'si |
+| `SUPABASE_ANON_KEY` | Anonim (public) anahtar |
+
+### `web-viewer/.env.local`
+
+| Değişken | Açıklama |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase proje URL'si |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Anonim (public) anahtar |
+| `SUPABASE_SERVICE_ROLE_KEY` | Servis rolü — **yalnızca sunucu tarafı** |
+
+---
+
+<div align="center">
+  <sub>Magpie — parlak şeyleri toplayan saksağan gibi, senin için toplar.</sub>
+</div>

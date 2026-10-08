@@ -55,3 +55,33 @@ export interface Collection {
 export interface FeedPost extends SavedPost {
   collections: { name: string } | null;
 }
+
+/** A collection shared with the current user by another owner. */
+export interface SharedCollection {
+  collection_id: string;
+  collection_name: string;
+  owner_email: string;
+  joined_at: string;
+  /** "viewer" = read-only (Paylaşımlı); "collaborator" = can add/delete own posts (Ortak) */
+  member_role: "viewer" | "collaborator";
+}
+
+/** A member of an owned collection, as returned by getCollectionMembers. */
+export interface CollectionMember {
+  member_user_id: string;
+  email: string;
+  joined_at: string;
+  invite_code: string | null;
+  is_owner: boolean;
+  member_role: string;
+}
+
+/** An active (unused, non-expired) invite code. */
+export interface ActiveInvite {
+  invite_id: string;
+  code: string;
+  grants_role: "viewer" | "collaborator";
+  expires_at: string;
+  created_by: string;
+  creator_email: string;
+}

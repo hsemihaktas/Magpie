@@ -92,6 +92,11 @@ export function normalizeInstagramMediaUrl(
   const pattern = PATH_PATTERNS.find((p) => p.segment === typeSegment);
   if (!pattern) return null;
 
+  // /reels/audio/..., /reels/saved/... gibi sub-path'leri reddet
+  // (bunlar gerçek media değil, kategori/audio reels sayfaları)
+  const EXCLUDED_SECOND_SEGMENTS = new Set(["audio", "saved", "suggested"]);
+  if (EXCLUDED_SECOND_SEGMENTS.has(shortcode)) return null;
+
   const canonicalUrl = `${INSTAGRAM_ORIGIN}/${pattern.canonical}/${shortcode}/`;
 
   return {

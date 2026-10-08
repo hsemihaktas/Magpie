@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import Image from "next/image";
+import { HeaderWrapper } from "@/components/HeaderWrapper";
 import "./globals.css";
 import ThemeToggle from "@/components/ThemeToggle";
+import { UserEmail } from "@/components/UserEmail";
 
 export const metadata: Metadata = {
   title: "Magpie",
@@ -24,15 +27,32 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className="min-h-screen flex flex-col">
-        {/* Header */}
+      <body className="min-h-screen flex flex-col" suppressHydrationWarning>
+        {/* Header — hidden on login page, always visible otherwise */}
+        <HeaderWrapper>
         <header className="sticky top-0 z-40 h-14 flex items-center px-6 border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/80 backdrop-blur-sm">
-          <div className="flex items-center gap-2 flex-1">
-            <span className="text-xl">🪶</span>
-            <span className="font-semibold text-gray-900 dark:text-white tracking-tight">Magpie</span>
+          {/* Logo */}
+          <div className="flex items-center gap-2.5 flex-1">
+            <Image
+              src="/logo.png"
+              alt="Magpie"
+              width={28}
+              height={28}
+              className="rounded-lg"
+              priority
+            />
+            <span className="font-semibold text-gray-900 dark:text-white tracking-tight">
+              Magpie
+            </span>
           </div>
-          <ThemeToggle />
+
+          {/* Right side */}
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <UserEmail />
+          </div>
         </header>
+        </HeaderWrapper>
 
         {/* Page content */}
         <main className="flex-1">

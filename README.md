@@ -335,3 +335,13 @@ supabase migration new <isim> && supabase db push
 <div align="center">
   <sub>Magpie — parlak şeyleri toplayan saksağan gibi, senin için toplar.</sub>
 </div>
+---
+
+## Lisans
+
+Copyright © 2024 Semih Aktaş. Tüm hakları saklıdır.
+
+Bu kaynak kodu yalnızca inceleme ve eğitim amaçlı paylaşılmaktadır.
+İzin alınmadan kullanılamaz, kopyalanamaz, dağıtılamaz veya ticari amaçlarla kullanılamaz.
+
+İzin talepleri için: info.hsemihaktas@gmail.com

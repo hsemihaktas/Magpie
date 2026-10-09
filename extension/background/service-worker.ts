@@ -141,8 +141,13 @@ export async function getValidSession(): Promise<StoredSession | null> {
   const nowSecs = Date.now() / 1000;
 
   if (nowSecs >= session.expiry) {
-    // Token has expired — clear storage and signal re-authentication
-    // (Requirements 1.4, 2.7).
+    if (session.refresh_token) {
+      // Access token expired but we have a refresh_token — try to renew silently.
+      console.log("[Magpie] Access token expired — attempting silent refresh.");
+      await refreshSession();
+      return getStoredSession(); // null if refresh failed, new session if succeeded
+    }
+    // No refresh token — clear and require re-login.
     await clearSession();
     return null; // JWT_EXPIRED
   }
@@ -173,9 +178,14 @@ export async function getValidSession(): Promise<StoredSession | null> {
  * function relies on the Supabase client's internally cached session.
  */
 export async function refreshSession(): Promise<void> {
-  // Create a minimal Supabase client. We disable automatic token persistence
-  // and auto-refresh because the service worker manages its own storage via
-  // chrome.storage (Requirements 2.2, 2.5).
+  const stored = await getStoredSession();
+  if (!stored?.refresh_token) {
+    // No refresh token available — cannot silently renew; user must re-login.
+    console.warn("[Magpie] refreshSession: no refresh_token stored — clearing.");
+    await clearSession();
+    return;
+  }
+
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
       autoRefreshToken: false,
@@ -184,23 +194,27 @@ export async function refreshSession(): Promise<void> {
     },
   });
 
+  // Seed the client's in-memory session so it has the refresh_token to use.
+  await supabase.auth.setSession({
+    access_token: stored.jwt,
+    refresh_token: stored.refresh_token,
+  });
+
   const { data, error } = await supabase.auth.refreshSession();
 
   if (error || !data.session) {
-    // Refresh failed — clear the stale session so the user is asked to
-    // re-authenticate on the next interaction (Requirements 1.4, 2.7).
     console.warn("[Magpie] Token refresh failed — clearing session.", error);
     await clearSession();
     return;
   }
 
-  const { access_token, expires_at, user } = data.session;
+  const { access_token, refresh_token, expires_at, user } = data.session;
 
   await storeSession({
     jwt: access_token,
-    // expires_at is seconds since epoch; fall back to 1 hour from now if absent.
     expiry: expires_at ?? Math.floor(Date.now() / 1000) + 3600,
     user_id: user.id,
+    refresh_token: refresh_token ?? undefined,
   });
 }
 
@@ -463,6 +477,7 @@ async function initiateLogin(): Promise<
           jwt: accessToken,
           expiry: Math.floor(Date.now() / 1000) + 3600,
           user_id: user.id,
+          // Implicit flow doesn't yield a refresh_token via this path
         };
         await storeSession(session);
         return { success: true, data: session };
@@ -484,11 +499,12 @@ async function initiateLogin(): Promise<
       };
     }
 
-    const { access_token, expires_at, user } = sessionData.session;
+    const { access_token, refresh_token, expires_at, user } = sessionData.session;
     const session: StoredSession = {
       jwt: access_token,
       expiry: expires_at ?? Math.floor(Date.now() / 1000) + 3600,
       user_id: user.id,
+      refresh_token: refresh_token ?? undefined,
     };
     await storeSession(session);
     return { success: true, data: session };

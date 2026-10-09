@@ -167,4 +167,10 @@ export interface StoredSession {
   expiry: number;
   /** UUID of the authenticated user extracted from the JWT */
   user_id: string;
+  /**
+   * Supabase refresh token — used to silently obtain a new access JWT when
+   * the current one expires. Storing this allows the extension to survive
+   * Chrome restarts without requiring re-authentication.
+   */
+  refresh_token?: string;
 }

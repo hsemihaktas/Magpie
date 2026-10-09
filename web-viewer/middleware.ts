@@ -28,11 +28,17 @@ export async function middleware(request: NextRequest) {
       cookie.name.startsWith("sb-") && cookie.name.includes("auth-token")
   );
 
-  // Calling getSession() also silently refreshes the access token when
-  // possible and writes the new cookie into `res`.
+  // getSession() refreshes the access token if needed and writes the new
+  // cookie into `res`.  We still call it first so the cookie stays fresh.
+  await supabase.auth.getSession();
+
+  // getUser() makes a server-side round-trip to verify the JWT is valid AND
+  // the user still exists in auth.users.  This catches deleted accounts that
+  // still have a browser cookie (getSession alone would not catch that).
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
+  const session = user ?? null;
 
   const { pathname } = request.nextUrl;
 

@@ -3,6 +3,7 @@ name: Mirror to showcase
 on:
   push:
     branches: [main]
+  workflow_dispatch:  # Manuel tetikleme
 
 jobs:
   mirror:
@@ -26,11 +27,15 @@ jobs:
               -e 's/Semih Aktas/Rewosama/gI' \
               -e 's/hsemihaktas/Rewosama/gI'
 
+          # README'deki CI badge satırlarını kaldır (showcase repo kendi CI'ına sahip değil)
+          sed -i '/actions\/workflows\/ci\.yml\/badge\.svg/d' README.md
+          sed -i '/actions\/workflows\/supabase\.yml\/badge\.svg/d' README.md
+
           # Geçmişi ve workflow'u at, temiz repo başlat
           rm -rf .git .github
           git init -b main
           git config user.name "Rewosama"
-          git config user.email "92674014+Rewosama@users.noreply.github.com"
+          git config user.email "339692574+Rewosama@users.noreply.github.com"
           git add -A
           git commit -m "Showcase"
           git remote add showcase https://x-access-token:${TOKEN}@github.com/Rewosama/Magpie.git

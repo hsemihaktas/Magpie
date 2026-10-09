@@ -4,25 +4,59 @@
 import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase";
 
+
 /**
- * Deletes a saved post by ID. RLS ensures the user can only delete their own posts.
+ * Extracts the Supabase Storage object path from a public thumbnail URL.
+ * URL format: https://xxx.supabase.co/storage/v1/object/public/thumbnails/{userId}/{postId}.{ext}
+ * Returns e.g. "userId/postId.jpg" or null if not a thumbnails URL.
+ */
+function storagePathFromThumbnailUrl(url: string): string | null {
+  try {
+    const marker = "/thumbnails/";
+    const idx = new URL(url).pathname.indexOf(marker);
+    if (idx === -1) return null;
+    return new URL(url).pathname.slice(idx + marker.length);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Deletes a saved post by ID and removes its thumbnail from Storage.
+ * RLS ensures the user can only delete their own posts.
  */
 export async function deletePost(postId: string): Promise<{ error: string | null }> {
   const supabase = createServerClient();
 
-  // Safety: verify session exists
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return { error: "Not authenticated" };
 
+  // Fetch thumbnail_url before deleting so we can clean up Storage
+  const { data: post } = await supabase
+    .from("saved_posts")
+    .select("thumbnail_url")
+    .eq("id", postId)
+    .eq("user_id", session.user.id)
+    .maybeSingle();
+
+  // Delete DB row
   const { error } = await supabase
     .from("saved_posts")
     .delete()
     .eq("id", postId)
-    .eq("user_id", session.user.id); // Extra safety on top of RLS
+    .eq("user_id", session.user.id);
 
   if (error) return { error: error.message };
 
-  revalidatePath("/feed"); // Refresh the feed after deletion
+  // Delete thumbnail from Storage (best-effort — don't fail the whole operation)
+  if (post?.thumbnail_url) {
+    const storagePath = storagePathFromThumbnailUrl(post.thumbnail_url);
+    if (storagePath) {
+      await supabase.storage.from("thumbnails").remove([storagePath]).catch(() => {});
+    }
+  }
+
+  revalidatePath("/feed");
   return { error: null };
 }
 
@@ -88,7 +122,7 @@ export async function setDefaultCollection(
 
 
 /**
- * Deletes multiple saved posts by ID in one query.
+ * Deletes multiple saved posts by ID and removes their thumbnails from Storage.
  */
 export async function deletePosts(
   postIds: string[]
@@ -99,6 +133,14 @@ export async function deletePosts(
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return { error: "Not authenticated" };
 
+  // Fetch thumbnail_urls before deleting
+  const { data: posts } = await supabase
+    .from("saved_posts")
+    .select("thumbnail_url")
+    .in("id", postIds)
+    .eq("user_id", session.user.id);
+
+  // Delete DB rows
   const { error } = await supabase
     .from("saved_posts")
     .delete()
@@ -106,6 +148,16 @@ export async function deletePosts(
     .eq("user_id", session.user.id);
 
   if (error) return { error: error.message };
+
+  // Delete thumbnails from Storage (best-effort)
+  if (posts && posts.length > 0) {
+    const storagePaths = posts
+      .map((p) => p.thumbnail_url ? storagePathFromThumbnailUrl(p.thumbnail_url) : null)
+      .filter((p): p is string => p !== null);
+    if (storagePaths.length > 0) {
+      await supabase.storage.from("thumbnails").remove(storagePaths).catch(() => {});
+    }
+  }
 
   revalidatePath("/feed");
   return { error: null };

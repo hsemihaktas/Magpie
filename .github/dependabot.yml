@@ -1,8 +1,13 @@
 # dependabot.yml — Automated dependency updates
-# Opens PRs for minor/patch updates only.
-# Major version bumps are ignored globally — they require manual migration
-# because they typically introduce breaking API changes (e.g. next 14→16,
-# react 18→19, vitest 2→5).
+# Policy: only open PRs for patch updates on pinned packages.
+#
+# Why this conservative policy?
+#   - Major version bumps (next 14→16, react 18→19, TS 5→6, vitest 2→5)
+#     require manual migration and break CI immediately.
+#   - Large minor jumps (supabase-js 2.45→2.117) can have silent type-level
+#     breaking changes even inside semver-minor range.
+#   - We accept only patch updates automatically; minor and major updates
+#     require a developer to update the code alongside the dependency.
 
 version: 2
 
@@ -15,14 +20,24 @@ updates:
       day: monday
       time: "09:00"
       timezone: "Europe/Istanbul"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     labels:
       - dependencies
       - extension
-    # Only auto-bump patch and minor; majors require manual review.
     ignore:
+      # Block all major bumps — they require code changes.
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # esbuild pre-1.0: minor versions can have breaking API changes.
+      - dependency-name: "esbuild"
+        update-types: ["version-update:semver-minor"]
+      # TypeScript minor versions sometimes tighten checks in ways that
+      # break existing code.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-minor"]
+      # @supabase/* minor versions can have silent type-level changes.
+      - dependency-name: "@supabase/*"
+        update-types: ["version-update:semver-minor"]
 
   # ── Next.js Web Viewer ──────────────────────────────────────────────────────
   - package-ecosystem: npm
@@ -32,15 +47,36 @@ updates:
       day: monday
       time: "09:00"
       timezone: "Europe/Istanbul"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     labels:
       - dependencies
       - web-viewer
-    # Same policy: only patch/minor updates automatically.
-    # next, react, react-dom, @supabase/* majors all require manual migration.
     ignore:
+      # Block all major bumps.
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # next minor versions frequently require Next.js config / API changes.
+      - dependency-name: "next"
+        update-types: ["version-update:semver-minor"]
+      # react minor versions can require component API changes.
+      - dependency-name: "react"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-minor"]
+      # @types/react minor versions can expose new type errors.
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-minor"]
+      # supabase-js and auth-helpers minor versions can have type-level changes.
+      - dependency-name: "@supabase/*"
+        update-types: ["version-update:semver-minor"]
+      # TypeScript minor versions can tighten checks.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-minor"]
+      # zod minor versions can have stricter validation APIs.
+      - dependency-name: "zod"
+        update-types: ["version-update:semver-minor"]
 
   # ── GitHub Actions ──────────────────────────────────────────────────────────
   - package-ecosystem: github-actions
@@ -50,7 +86,6 @@ updates:
     labels:
       - dependencies
       - github-actions
-    # actions/checkout@v5, actions/setup-node@v5 etc. can have breaking changes.
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]

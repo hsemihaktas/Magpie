@@ -338,6 +338,48 @@ supabase migration new <isim> && supabase db push
 </div>
 ---
 
+## Test
+
+### Birim Testleri
+
+Vitest kullanılır. Supabase veya Docker gerektirmez.
+
+```bash
+# Uzantı (permalink, canonicalize, metadata-extractor DOM, invite-code)
+cd extension && npm test
+
+# Web görüntüleyici (invite-code)
+cd web-viewer && npm test
+
+# Kapsam raporu
+cd extension && npm run test:coverage
+```
+
+### RLS Entegrasyon Testleri
+
+pgTAP kullanır. Supabase CLI ve Docker gerektirir.
+
+```bash
+# Yerel Supabase başlat (ilk seferinde Docker image indirir)
+supabase start
+
+# Tüm RLS testlerini çalıştır
+supabase test db
+
+# Yerel Supabase durdur
+supabase stop
+```
+
+Test dosyaları `supabase/tests/` altındadır:
+- `01_rls_collections_and_posts.sql` — sahip/viewer/collaborator/stranger/evicted senaryoları
+- `02_rls_invite_codes.sql` — süresi dolmuş/kullanılmış kod, rate limit, membership oluşturma
+
+> **Not:** RLS testleri `supabase start` ile ayağa kalkan yerel Supabase örneğine bağlanır.
+> Uzak veritabanını test etmek için `supabase test db --linked` kullanılabilir (dikkatli olun,
+> test verileri ROLLBACK ile temizlenir ama production verilerine dokunmayın).
+
+---
+
 ## Lisans
 
 Copyright © 2026 Semih Aktaş. Tüm hakları saklıdır.

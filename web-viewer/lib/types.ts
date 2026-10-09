@@ -29,6 +29,8 @@ export interface SavedPost {
   raw_metadata: Record<string, unknown> | null;
   /** Persisted thumbnail URL uploaded to Supabase Storage (Requirement 19.5). */
   thumbnail_url?: string | null;
+  /** Canonical URL for cross-format deduplication (migration 019). */
+  canonical_url?: string | null;
 }
 
 /**
@@ -39,6 +41,19 @@ export interface Collection {
   id: string;
   name: string;
   is_default: boolean;
+}
+
+// ── Pagination ───────────────────────────────────────────────────────────────
+
+/**
+ * Opaque cursor for keyset pagination over saved_posts.
+ * The sort order is (saved_at DESC, id DESC).
+ * Passing this to getPosts fetches the page *after* the row identified by
+ * (saved_at, id) — no OFFSET, O(log n) index seek at any depth.
+ */
+export interface PostCursor {
+  saved_at: string; // timestamptz ISO string as returned by Supabase
+  id: string;       // UUID of the last post on the current page
 }
 
 // ── Query result type ────────────────────────────────────────────────────────

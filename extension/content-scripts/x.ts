@@ -14,9 +14,11 @@
  */
 
 import type { PostMetadata } from "../shared/types/domain";
+import { canonicalizeUrl } from "../shared/canonicalizeUrl";
 import { openModal } from "./modal";
 import { showToast } from "./toast";
 import type { PostMetadata } from "../shared/types/domain";
+import { canonicalizeUrl } from "../shared/canonicalizeUrl";
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 
@@ -88,7 +90,11 @@ function extractXMetadata(el: Element): Partial<PostMetadata> | null {
   );
   if (!tweetLinkEl?.href) return null;
 
-  const post_url = new URL(tweetLinkEl.href, window.location.origin).href;
+  const rawUrl   = new URL(tweetLinkEl.href, window.location.origin).href;
+  const canonical = canonicalizeUrl(rawUrl, "x");
+  // Use canonical form as post_url so UNIQUE(user_id, canonical_url) in
+  // the DB resolves correctly even when the edge function also sets canonical_url.
+  const post_url = canonical ?? rawUrl;
 
   // 2. Author name/handle
   //    X renders the User-Name container with two spans:
@@ -230,7 +236,7 @@ async function resolveXDefaultFromServer(): Promise<XDefaultCollection | undefin
 async function xSaveToDefault(
   meta: Partial<PostMetadata>,
   col: XDefaultCollection,
-): Promise<boolean> {
+): Promise<boolean | "duplicate"> {
   if (!meta.post_url || !chrome.runtime?.id) return false;
   try {
     const response = (await chrome.runtime.sendMessage({
@@ -249,7 +255,9 @@ async function xSaveToDefault(
         raw_metadata: meta.raw_metadata ?? null,
       },
     })) as { success: boolean; error?: string };
-    return !!response?.success;
+    if (!response?.success) return false;
+    const data = response.data as { status?: string } | null;
+    return data?.status === "updated" ? "duplicate" : true;
   } catch {
     return false;
   }
@@ -293,7 +301,7 @@ async function openXCollectionPicker(tweetEl: Element): Promise<void> {
 
   if (defaultCol) {
     const ok = await xSaveToDefault(meta, defaultCol);
-    if (ok) {
+    if (ok === true) {
       showToast({
         message: `Saved to ${defaultCol.name} ✓`,
         platform: "x",
@@ -301,8 +309,15 @@ async function openXCollectionPicker(tweetEl: Element): Promise<void> {
           void openCollectionPickerX(meta);
         },
       });
+    } else if (ok === "duplicate") {
+      showToast({
+        message: `Zaten kayıtlı (${defaultCol.name})`,
+        platform: "x",
+        onChangeCollection: () => {
+          void openCollectionPickerX(meta);
+        },
+      });
     } else {
-      // Save failed (e.g. duplicate) — let user pick manually
       await openCollectionPickerX(meta);
     }
   } else {

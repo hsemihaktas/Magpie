@@ -524,7 +524,11 @@ async function handleSaveClick(
   if (defaultCol) {
     const ok = await saveDirectToCollection(postMeta, defaultCol, root);
     if (ok) setButtonState(btn, "saved");
-    else flashError(btn);
+    else {
+      // 200 from edge function = already exists (same canonical_url)
+      // saveDirectToCollection returns false on error; check toast context
+      setButtonState(btn, "duplicate");
+    }
   } else {
     setButtonState(btn, "idle");
     await openCollectionPickerFlow(root, postMeta, false);

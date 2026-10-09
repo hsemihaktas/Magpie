@@ -92,6 +92,47 @@ async function uploadThumbnail(
   }
 }
 
+
+// ── URL Canonicalization ───────────────────────────────────────────────────────
+// Mirrors extension/shared/canonicalizeUrl.ts (Deno-compatible, no imports needed).
+
+function canonicalizeUrl(rawUrl: string, platform: string): string | null {
+  let url: URL;
+  try { url = new URL(rawUrl); } catch { return null; }
+
+  const igHosts = new Set(["www.instagram.com", "instagram.com"]);
+  const xHosts  = new Set(["x.com", "twitter.com", "www.x.com", "www.twitter.com"]);
+  const igTypes = new Set(["p", "reel", "reels", "tv"]);
+
+  if (platform === "instagram" && igHosts.has(url.hostname)) {
+    const parts = url.pathname.split("/").filter(Boolean);
+    for (let offset = 0; offset <= 1; offset++) {
+      const typeSegment = parts[offset], shortcode = parts[offset + 1];
+      if (!typeSegment || !igTypes.has(typeSegment) || !shortcode) continue;
+      if (!/^[\w-]+$/.test(shortcode)) continue;
+      const sub = parts[offset + 2];
+      if (sub && ["liked_by", "comments", "activity"].includes(sub)) return null;
+      const type = typeSegment === "reels" ? "reel" : typeSegment;
+      return `https://www.instagram.com/${type}/${shortcode}/`;
+    }
+    return null;
+  }
+
+  if ((platform === "x" || platform === "twitter") && xHosts.has(url.hostname)) {
+    const parts = url.pathname.split("/").filter(Boolean);
+    const statusIdx = parts.lastIndexOf("status");
+    if (statusIdx >= 0) {
+      const id = parts[statusIdx + 1];
+      if (id && /^\d+$/.test(id)) {
+        return `https://x.com/i/web/status/${id}`;
+      }
+    }
+    return null;
+  }
+
+  return null;
+}
+
 serve(async (req: Request): Promise<Response> => {
   // Only accept POST requests
   if (req.method !== "POST") {
@@ -215,15 +256,19 @@ serve(async (req: Request): Promise<Response> => {
     .from("saved_posts")
     .select("id")
     .eq("user_id", user.id)
-    .eq("post_url", postUrl.trim())
+    .eq("canonical_url", canonicalUrl)
     .maybeSingle();
 
   const isExistingPost = existingPost !== null;
 
   // ── Step 6: Build upsert payload from validated body fields ───────────────
   const typedBody = body as SavePostBody;
+  const rawPostUrl   = typedBody.post_url.trim();
+  const canonicalUrl = canonicalizeUrl(rawPostUrl, typedBody.platform ?? "") ?? rawPostUrl;
+
   const upsertPayload = {
-    post_url: typedBody.post_url.trim(),
+    post_url: rawPostUrl,
+    canonical_url: canonicalUrl,
     collection_id: collectionId,
     post_type: typedBody.post_type ?? null,
     platform: typedBody.platform ?? null,
@@ -245,7 +290,7 @@ serve(async (req: Request): Promise<Response> => {
         user_id: user.id,
         saved_at: new Date().toISOString(),
       },
-      { onConflict: "user_id,post_url", ignoreDuplicates: false },
+      { onConflict: "user_id,canonical_url", ignoreDuplicates: false },
     )
     .select("id")
     .single();

@@ -10,7 +10,7 @@ export default async function LoginPage({ searchParams }: { searchParams: { erro
       <div className="w-full max-w-sm space-y-8">
         {/* Brand */}
         <div className="text-center space-y-2">
-          <Image src="/logo-96.png" alt="Magpie" width={96} height={96} className="mx-auto rounded-2xl shadow-md mb-2" priority />
+          <Image src="/logo-512.png" alt="Magpie" width={96} height={96} className="mx-auto rounded-2xl shadow-md mb-2" priority />
           <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Magpie</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Your personal social content archive

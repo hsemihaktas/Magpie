@@ -27,6 +27,13 @@ function XIcon({ className = "w-4 h-4" }: { className?: string }) {
   );
 }
 
+
+/** Returns the URL only if it starts with http(s)://, otherwise null. Prevents javascript: XSS. */
+function safeUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  return /^https?:\/\//i.test(url) ? url : null;
+}
+
 const MAX_LEN = 240;
 const POST_TYPE_LABELS: Record<string, string> = {
   post: "Post", reel: "Reel", story: "Story", tweet: "Tweet"
@@ -86,7 +93,7 @@ export default function PostCard({ post, selectMode = false, isSelected = false,
   const [avatarError, setAvatarError] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
-  const thumbnailUrl = thumbError ? null : (post.thumbnail_url ?? post.media_urls?.[0] ?? null);
+  const thumbnailUrl = thumbError ? null : safeUrl(post.thumbnail_url ?? post.media_urls?.[0] ?? null);
   const contentText = post.content_text ?? "";
   const isLong = contentText.length > MAX_LEN;
   const display = isLong && !expanded ? contentText.slice(0, MAX_LEN) + "…" : contentText;
@@ -177,9 +184,9 @@ export default function PostCard({ post, selectMode = false, isSelected = false,
         <div className="p-4 flex flex-col gap-3 flex-1">
           {/* Author */}
           <div className="flex items-center gap-2.5">
-            {post.author_avatar_url && !avatarError ? (
+            {safeUrl(post.author_avatar_url) && !avatarError ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={post.author_avatar_url} alt="" onError={() => setAvatarError(true)} className="w-8 h-8 rounded-full object-cover bg-gray-200 dark:bg-gray-700 shrink-0 ring-1 ring-gray-200 dark:ring-gray-700" />
+              <img src={safeUrl(post.author_avatar_url)!} alt="" onError={() => setAvatarError(true)} className="w-8 h-8 rounded-full object-cover bg-gray-200 dark:bg-gray-700 shrink-0 ring-1 ring-gray-200 dark:ring-gray-700" />
             ) : (
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 shrink-0 flex items-center justify-center text-white text-xs font-bold">
                 {displayName?.[0]?.toUpperCase() ?? "?"}
@@ -216,8 +223,8 @@ export default function PostCard({ post, selectMode = false, isSelected = false,
               </span>
             ) : <span />}
 
-            {post.post_url && !selectMode ? (
-              <a href={post.post_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 flex items-center gap-1 shrink-0">
+            {safeUrl(post.post_url) && !selectMode ? (
+              <a href={safeUrl(post.post_url)!} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 flex items-center gap-1 shrink-0">
                 View original
                 <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
               </a>

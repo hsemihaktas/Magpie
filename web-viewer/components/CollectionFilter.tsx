@@ -49,7 +49,7 @@ function CollectionItem({
   const saveEdit = () => {
     if (value.trim() === c.name) { cancelEdit(); return; }
     startTransition(async () => {
-      const { error } = await renameCollection(c.id, value);
+      const result = await renameCollection(c.id, value);
       if (error) setError(error);
       else { setEditing(false); setError(null); }
     });

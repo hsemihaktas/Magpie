@@ -26,10 +26,10 @@ export default function ManageMembersModal({ collectionId, collectionName, onClo
       getActiveInvites(collectionId),
     ]).then(([membersResult, invitesResult]) => {
       setLoading(false);
-      if (!membersResult || "error" in membersResult) setError(membersResult?.error ?? "Yüklenemedi");
-      else setMembers(membersResult.members);
-      if (!invitesResult || "error" in invitesResult) { /* silent fail for invites */ }
-      else setInvites(invitesResult.invites);
+      if (!membersResult.ok) setError(membersResult.error);
+      else setMembers(membersResult.data.members);
+      if (!invitesResult.ok) { /* silent fail for invites */ }
+      else setInvites(invitesResult.data.invites);
     });
 
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -42,7 +42,7 @@ export default function ManageMembersModal({ collectionId, collectionName, onClo
     startTransition(async () => {
       const result = await revokeCollectionMember(collectionId, memberUserId);
       setRevoking(null);
-      if (result?.error) setError(result.error);
+      if (!result.ok) setError(result.error);
       else setMembers((prev) => prev.filter((m) => m.member_user_id !== memberUserId));
     });
   };
@@ -52,7 +52,7 @@ export default function ManageMembersModal({ collectionId, collectionName, onClo
     startTransition(async () => {
       const result = await revokeInviteCode(inviteId);
       setRevokingInvite(null);
-      if (result?.error) setError(result.error);
+      if (!result.ok) setError(result.error);
       else setInvites((prev) => prev.filter((i) => i.invite_id !== inviteId));
     });
   };

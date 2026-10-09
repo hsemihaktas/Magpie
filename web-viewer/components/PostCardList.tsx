@@ -99,8 +99,8 @@ export default function PostCardList({
     setShowDialog(false);
     startTransition(async () => {
       const ids = Array.from(selectedIds);
-      const { error } = await deletePosts(ids);
-      if (!error) {
+      const result = await deletePosts(ids);
+      if (result.ok) {
         const deleted = new Set(ids);
         setPosts((prev) => prev.filter((p) => !deleted.has(p.id)));
         setSelectedIds(new Set());

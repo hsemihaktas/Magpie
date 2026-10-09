@@ -104,9 +104,9 @@ export default function PostCard({ post, selectMode = false, isSelected = false,
   const confirmDelete = () => {
     setShowDeleteDialog(false);
     startTransition(async () => {
-      const { error } = await deletePost(post.id);
-      if (!error) setDeleted(true);
-      else alert("Silme başarısız: " + error);
+      const result = await deletePost(post.id);
+      if (result.ok) setDeleted(true);
+      else alert("Silme başarısız: " + result.error);
     });
   };
 

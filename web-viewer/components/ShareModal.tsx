@@ -30,8 +30,8 @@ export default function ShareModal({
     setCode(null);
     startTransition(async () => {
       const result = await generateInviteCode(collectionId, r);
-      if (!result || "error" in result) setError(result.error);
-      else { setCode(result.code); setExpiresAt(result.expiresAt); }
+      if (!result.ok) setError(result.error);
+      else { setCode(result.data.code); setExpiresAt(result.data.expiresAt); }
     });
   };
 

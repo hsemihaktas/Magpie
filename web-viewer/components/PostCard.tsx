@@ -174,9 +174,27 @@ export default function PostCard({ post, selectMode = false, isSelected = false,
             </div>
           </div>
         ) : (
-          <div className="aspect-[4/3] bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-850 flex flex-col items-center justify-center gap-2">
-            {post.platform === "instagram" ? <InstagramIcon className="w-10 h-10 opacity-20" /> : <XIcon className="w-10 h-10 opacity-20 text-gray-500" />}
-            {postTypeLabel && <span className="text-[10px] uppercase tracking-widest font-semibold text-gray-400 dark:text-gray-600">{postTypeLabel}</span>}
+          <div className="aspect-[4/3] bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 flex flex-col items-center justify-center gap-2 px-4">
+            {post.platform === "instagram" ? <InstagramIcon className="w-8 h-8 opacity-20" /> : <XIcon className="w-8 h-8 opacity-20 text-gray-500" />}
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center leading-tight">
+              Görsel yüklenemedi
+            </p>
+            {safeUrl(post.post_url) && (
+              <a
+                href={safeUrl(post.post_url)!}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="text-[10px] font-medium text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1 transition-colors"
+              >
+                Orijinal postu aç
+                <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                  <polyline points="15 3 21 3 21 9"/>
+                  <line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+              </a>
+            )}
           </div>
         )}
 

@@ -6,8 +6,8 @@ import { createServerClient } from "@/lib/supabase";
 
 
 /**
- * Extracts the Supabase Storage object path from a public thumbnail URL.
- * URL format: https://xxx.supabase.co/storage/v1/object/public/thumbnails/{userId}/{postId}.{ext}
+ * Extracts the Supabase Storage object path from a public thumbnails-bucket URL.
+ * Works for thumbnail URLs (postId.ext) and avatar URLs (postId_avatar.ext).
  * Returns e.g. "userId/postId.jpg" or null if not a thumbnails URL.
  */
 function storagePathFromThumbnailUrl(url: string): string | null {
@@ -22,6 +22,27 @@ function storagePathFromThumbnailUrl(url: string): string | null {
 }
 
 /**
+ * Collects all Storage paths (thumbnail + avatar) for a post record.
+ * Accepts a partial post record with thumbnail_url and author_avatar_url.
+ */
+function collectStoragePaths(post: {
+  thumbnail_url?: string | null;
+  author_avatar_url?: string | null;
+}): string[] {
+  const paths: string[] = [];
+  if (post.thumbnail_url) {
+    const p = storagePathFromThumbnailUrl(post.thumbnail_url);
+    if (p) paths.push(p);
+  }
+  // Only clean up avatar if it was uploaded to our Storage (contains /thumbnails/)
+  if (post.author_avatar_url && post.author_avatar_url.includes("/thumbnails/")) {
+    const p = storagePathFromThumbnailUrl(post.author_avatar_url);
+    if (p) paths.push(p);
+  }
+  return paths;
+}
+
+/**
  * Deletes a saved post by ID and removes its thumbnail from Storage.
  * RLS ensures the user can only delete their own posts.
  */
@@ -31,10 +52,10 @@ export async function deletePost(postId: string): Promise<{ error: string | null
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return { error: "Not authenticated" };
 
-  // Fetch thumbnail_url before deleting so we can clean up Storage
+  // Fetch thumbnail_url + author_avatar_url before deleting so we can clean up Storage
   const { data: post } = await supabase
     .from("saved_posts")
-    .select("thumbnail_url")
+    .select("thumbnail_url, author_avatar_url")
     .eq("id", postId)
     .eq("user_id", session.user.id)
     .maybeSingle();
@@ -48,11 +69,11 @@ export async function deletePost(postId: string): Promise<{ error: string | null
 
   if (error) return { error: error.message };
 
-  // Delete thumbnail from Storage (best-effort — don't fail the whole operation)
-  if (post?.thumbnail_url) {
-    const storagePath = storagePathFromThumbnailUrl(post.thumbnail_url);
-    if (storagePath) {
-      await supabase.storage.from("thumbnails").remove([storagePath]).catch(() => {});
+  // Delete thumbnail + avatar from Storage (best-effort)
+  if (post) {
+    const paths = collectStoragePaths(post);
+    if (paths.length > 0) {
+      await supabase.storage.from("thumbnails").remove(paths).catch(() => {});
     }
   }
 
@@ -136,7 +157,7 @@ export async function deletePosts(
   // Fetch thumbnail_urls before deleting
   const { data: posts } = await supabase
     .from("saved_posts")
-    .select("thumbnail_url")
+    .select("thumbnail_url, author_avatar_url")
     .in("id", postIds)
     .eq("user_id", session.user.id);
 
@@ -149,11 +170,9 @@ export async function deletePosts(
 
   if (error) return { error: error.message };
 
-  // Delete thumbnails from Storage (best-effort)
+  // Delete thumbnails + avatars from Storage (best-effort)
   if (posts && posts.length > 0) {
-    const storagePaths = posts
-      .map((p) => p.thumbnail_url ? storagePathFromThumbnailUrl(p.thumbnail_url) : null)
-      .filter((p): p is string => p !== null);
+    const storagePaths = posts.flatMap((p) => collectStoragePaths(p));
     if (storagePaths.length > 0) {
       await supabase.storage.from("thumbnails").remove(storagePaths).catch(() => {});
     }

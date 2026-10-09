@@ -238,11 +238,15 @@ export async function joinCollectionViaCode(
 
   if (error) {
     const msg = error.message ?? "";
-    if (msg.includes("NOT_FOUND"))      return { error: "geçersiz kod" };
-    if (msg.includes("ALREADY_USED"))   return { error: "kod zaten kullanılmış" };
-    if (msg.includes("EXPIRED"))        return { error: "kod süresi dolmuş" };
-    if (msg.includes("IS_OWNER"))       return { error: "Kendi koleksiyonunuza üye olamazsınız" };
-    if (msg.includes("ALREADY_MEMBER")) return { error: "Bu koleksiyona zaten üyesiniz" };
+    // NOT_FOUND, ALREADY_USED, EXPIRED ve INVALID hepsi aynı mesajı döner:
+    // farklı mesajlar kodun var olup olmadığını sızdırır.
+    if (msg.includes("INVALID") ||
+        msg.includes("NOT_FOUND") ||
+        msg.includes("ALREADY_USED") ||
+        msg.includes("EXPIRED"))          return { error: "geçersiz kod" };
+    if (msg.includes("RATE_LIMITED"))     return { error: "Çok fazla başarısız deneme. 15 dakika sonra tekrar deneyin." };
+    if (msg.includes("IS_OWNER"))         return { error: "Kendi koleksiyonunuza üye olamazsınız" };
+    if (msg.includes("ALREADY_MEMBER"))   return { error: "Bu koleksiyona zaten üyesiniz" };
     return { error: error.message };
   }
 

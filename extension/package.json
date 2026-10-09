@@ -16,5 +16,6 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.109.0"
-  }
+  },
+  "license": "UNLICENSED"
 }

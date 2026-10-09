@@ -38,6 +38,9 @@ updates:
       # @supabase/* minor versions can have silent type-level changes.
       - dependency-name: "@supabase/*"
         update-types: ["version-update:semver-minor"]
+      # @types/chrome minor versions (0.0.x→0.3.x) can have large type changes.
+      - dependency-name: "@types/chrome"
+        update-types: ["version-update:semver-minor"]
 
   # ── Next.js Web Viewer ──────────────────────────────────────────────────────
   - package-ecosystem: npm

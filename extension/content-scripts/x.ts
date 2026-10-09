@@ -17,8 +17,6 @@ import type { PostMetadata } from "../shared/types/domain";
 import { canonicalizeUrl } from "../shared/canonicalizeUrl";
 import { openModal } from "./modal";
 import { showToast } from "./toast";
-import type { PostMetadata } from "../shared/types/domain";
-import { canonicalizeUrl } from "../shared/canonicalizeUrl";
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 
@@ -254,7 +252,7 @@ async function xSaveToDefault(
         post_timestamp: meta.post_timestamp ?? null,
         raw_metadata: meta.raw_metadata ?? null,
       },
-    })) as { success: boolean; error?: string };
+    })) as { success: boolean; error?: string; data?: { status?: string } | null };
     if (!response?.success) return false;
     const data = response.data as { status?: string } | null;
     return data?.status === "updated" ? "duplicate" : true;

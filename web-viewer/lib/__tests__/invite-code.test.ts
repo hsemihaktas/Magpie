@@ -28,6 +28,7 @@ describe("generateCode (web-viewer)", () => {
 
   it("only contains chars from [A-Z0-9]", () => {
     const code = generateCode();
-    expect([...code].every(c => /[A-Z0-9]/.test(c))).toBe(true);
+    // Array.from avoids the --downlevelIteration requirement of [...string]
+    expect(Array.from(code).every(c => /[A-Z0-9]/.test(c))).toBe(true);
   });
 });

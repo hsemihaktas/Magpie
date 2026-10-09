@@ -1,11 +1,13 @@
 # dependabot.yml — Automated dependency updates
-# Checks for outdated npm packages in extension/ and web-viewer/ weekly.
-# Only opens PRs — does not auto-merge (review required).
+# Opens PRs for minor/patch updates only.
+# Major version bumps are ignored globally — they require manual migration
+# because they typically introduce breaking API changes (e.g. next 14→16,
+# react 18→19, vitest 2→5).
 
 version: 2
 
 updates:
-  # Chrome Extension
+  # ── Chrome Extension ────────────────────────────────────────────────────────
   - package-ecosystem: npm
     directory: /extension
     schedule:
@@ -17,8 +19,12 @@ updates:
     labels:
       - dependencies
       - extension
+    # Only auto-bump patch and minor; majors require manual review.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
-  # Next.js Web Viewer
+  # ── Next.js Web Viewer ──────────────────────────────────────────────────────
   - package-ecosystem: npm
     directory: /web-viewer
     schedule:
@@ -30,8 +36,13 @@ updates:
     labels:
       - dependencies
       - web-viewer
+    # Same policy: only patch/minor updates automatically.
+    # next, react, react-dom, @supabase/* majors all require manual migration.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
-  # GitHub Actions themselves
+  # ── GitHub Actions ──────────────────────────────────────────────────────────
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -39,3 +50,7 @@ updates:
     labels:
       - dependencies
       - github-actions
+    # actions/checkout@v5, actions/setup-node@v5 etc. can have breaking changes.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

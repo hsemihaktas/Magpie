@@ -755,8 +755,9 @@ async function init(): Promise<void> {
       BackgroundResponse<StoredSession | null>
     >({ type: "GET_SESSION_STATUS" });
 
-    hasSession = !!(sessionResp?.success && (sessionResp as { success: true; data: unknown }).data);
-    console.log("[Magpie] init: hasSession =", hasSession, sessionResp?.success, !!sessionResp?.data);
+    const sessionData = sessionResp?.success ? sessionResp.data : undefined;
+    hasSession = !!sessionData;
+    console.log("[Magpie] init: hasSession =", hasSession, sessionResp?.success, !!sessionData);
   } catch (e) {
     console.error("[Magpie] init: GET_SESSION_STATUS failed:", e);
     renderLoginView();

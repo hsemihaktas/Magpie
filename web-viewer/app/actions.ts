@@ -240,6 +240,7 @@ export async function joinCollectionViaCode(
     const msg = error.message ?? "";
     // NOT_FOUND, ALREADY_USED, EXPIRED ve INVALID hepsi aynı mesajı döner:
     // farklı mesajlar kodun var olup olmadığını sızdırır.
+    if (msg.includes("UNAUTHORIZED"))           return { error: "Oturum bilgisi geçersiz." };
     if (msg.includes("INVALID") ||
         msg.includes("NOT_FOUND") ||
         msg.includes("ALREADY_USED") ||

@@ -1,0 +1,48 @@
+# supabase.yml — RLS Integration Tests
+# Triggered when migration files or pgTAP test files change.
+# Starts a local Supabase instance (Docker), applies all migrations,
+# then runs pgTAP tests with `supabase test db`.
+
+name: Supabase RLS Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/tests/**'
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/tests/**'
+
+permissions:
+  contents: read
+
+jobs:
+  rls-tests:
+    name: RLS Integration Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+        env:
+          # Authenticate GitHub API calls so version resolution doesn't hit
+          # the 60 req/hour unauthenticated rate limit.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start local Supabase (applies migrations automatically)
+        run: supabase start
+        # First run downloads Docker images (~3–5 min); subsequent runs use cache.
+
+      - name: Run pgTAP RLS tests
+        run: supabase test db
+
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop

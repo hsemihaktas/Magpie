@@ -29,9 +29,24 @@ function loadEnv() {
 
 const env = loadEnv();
 
-// Convert { KEY: 'value' } → { 'process.env.KEY': '"value"' } for esbuild define
+// Whitelist: only these keys are allowed in the browser bundle.
+// NEVER add SERVICE_ROLE_KEY or other server-side secrets here.
+const ALLOWED_ENV_KEYS = new Set([
+  'SUPABASE_URL',
+  'SUPABASE_ANON_KEY',
+  'WEB_VIEWER_URL',
+]);
+
+const forbiddenKeys = Object.keys(env).filter(k => !ALLOWED_ENV_KEYS.has(k));
+if (forbiddenKeys.length > 0) {
+  console.warn('[build] WARNING: .env contains keys not in the whitelist (they will NOT be bundled):', forbiddenKeys);
+}
+
+// Convert whitelisted { KEY: 'value' } → { 'process.env.KEY': '"value"' } for esbuild define
 const envDefine = Object.fromEntries(
-  Object.entries(env).map(([k, v]) => ['process.env.' + k, JSON.stringify(v)])
+  Object.entries(env)
+    .filter(([k]) => ALLOWED_ENV_KEYS.has(k))
+    .map(([k, v]) => ['process.env.' + k, JSON.stringify(v)])
 );
 
 // Polyfill process for Chrome extension service workers.

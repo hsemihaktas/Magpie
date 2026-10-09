@@ -348,4 +348,187 @@
       .collection-error-banner {
         margin: 6px 16px 4px;
       }
-    
+
+      /* ── Web link footer ────────────────────────────────────────────────────── */
+      .collections-footer {
+        padding: 8px 16px 4px;
+        border-top: 1px solid #f0f0f0;
+        margin-top: 4px;
+      }
+
+      .collections-web-link {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: #6366f1 !important;
+        font-size: 11px !important;
+        opacity: 0.85;
+        text-decoration: none;
+        padding: 4px 0 !important;
+      }
+
+      .collections-web-link:hover {
+        opacity: 1;
+      }
+
+      /* ── Header actions ─────────────────────────────────────────────────── */
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+
+      .btn--icon {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 5px;
+        border-radius: 6px;
+        color: #888;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.15s, color 0.15s;
+      }
+      .btn--icon:hover { background: #f0f0f0; color: #444; }
+
+      .btn--logout {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 5px;
+        border-radius: 6px;
+        color: #ef4444;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.15s;
+      }
+      .btn--logout:hover { background: #fef2f2; }
+
+      /* ── Collections loading spinner ────────────────────────────────────── */
+      .collections-loading {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 28px 0;
+      }
+
+      /* ── Web archive button ──────────────────────────────────────────────── */
+      .collections-footer {
+        padding: 8px 12px 6px;
+        border-top: 1px solid #f0f0f0;
+        margin-top: 4px;
+      }
+
+      .web-archive-btn {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        width: 100%;
+        background: #f5f3ff;
+        border: 1px solid #e0d9ff;
+        border-radius: 8px;
+        padding: 8px 12px;
+        cursor: pointer;
+        color: #6366f1;
+        font-size: 11.5px;
+        font-weight: 500;
+        font-family: inherit;
+        transition: background 0.15s, border-color 0.15s;
+        text-align: left;
+      }
+      .web-archive-btn span { flex: 1; }
+      .web-archive-btn .arrow { opacity: 0.5; transition: transform 0.15s, opacity 0.15s; }
+      .web-archive-btn:hover { background: #ede9fe; border-color: #c4b5fd; }
+      .web-archive-btn:hover .arrow { transform: translateX(2px); opacity: 1; }
+
+      /* ── Dark mode ───────────────────────────────────────────────────────── */
+      :root.dark body,
+      .dark body {
+        background-color: #111827;
+        color: #f3f4f6;
+      }
+      .dark .collections-header { border-color: #374151; }
+      .dark .collections-footer { border-color: #374151; }
+      .dark .collection-item { border-bottom-color: #374151; }
+      .dark .collection-item:hover { background: #1f2937; }
+      .dark .input {
+        background: #1f2937;
+        border-color: #4b5563;
+        color: #f3f4f6;
+      }
+      .dark .btn--icon { color: #9ca3af; }
+      .dark .btn--icon:hover { background: #374151; color: #e5e7eb; }
+      .dark .btn--logout:hover { background: #450a0a; }
+      .dark .web-archive-btn {
+        background: #1e1b4b;
+        border-color: #3730a3;
+        color: #a5b4fc;
+      }
+      .dark .web-archive-btn:hover { background: #2e2b61; border-color: #4f46e5; }
+      .dark .empty-message { color: #6b7280; }
+      .dark .loading-spinner { border-color: rgba(165,180,252,0.2); border-top-color: #a5b4fc; }
+      .dark .collection-add-toggle { color: #a5b4fc; }
+      .dark .collection-add-toggle:hover { background: #1f2937; }
+      .dark .btn--text { color: #9ca3af; }
+      .dark .btn--text:hover { background: #1f2937; color: #e5e7eb; }
+      .dark .error-message { background: #450a0a; border-color: #7f1d1d; color: #fca5a5; }
+      .dark .rename-form .input { background: #1f2937; color: #f3f4f6; }
+      .dark .collections-title { color: #f3f4f6; }
+
+      /* ── Additional dark mode border fixes ──────────────────────────────── */
+      .dark .collections-list { border-color: #374151; }
+      .dark #add-collection-section { border-top-color: #374151 !important; }
+      .dark .collection-item { border-bottom-color: #374151 !important; }
+      .dark .collections-container {
+        background: #111827;
+      }
+
+      /* ── Collection name readability ─────────────────────────────────────── */
+      .collection-name {
+        font-weight: 500;
+        color: #1f2937;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+        min-width: 0;
+        font-size: 13px;
+      }
+      .dark .collection-name { color: #f3f4f6; }
+
+      /* ── Login view dark mode ────────────────────────────────────────────── */
+      .dark .login-container {
+        background: #111827;
+      }
+      .dark .login-title {
+        color: #f3f4f6;
+      }
+      .dark .login-subtitle {
+        color: #9ca3af;
+      }
+      .dark .btn--google {
+        background: #1f2937;
+        border-color: #374151;
+        color: #f3f4f6;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+      }
+      .dark .btn--google:hover {
+        background: #374151;
+      }
+      .dark body {
+        background: #111827;
+      }
+
+      /* ── Login theme toggle button ──────────────────────────────────────── */
+      .login-theme-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+      }
+
+      /* ── Body base dark ─────────────────────────────────────────────────── */
+      .dark .loading-container {
+        background: #111827;
+      }

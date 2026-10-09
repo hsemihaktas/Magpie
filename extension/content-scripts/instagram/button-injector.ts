@@ -427,24 +427,28 @@ async function openCollectionPickerFlow(
 ): Promise<void> {
   setOnSaveSuccessCallback(
     (collectionId: string, collectionName: string | null) => {
-      chrome.storage.local
-        .set({
-          [DEFAULT_COL_KEY]: {
-            id: collectionId,
-            name: collectionName ?? "Magpie",
-          },
-        })
-        .catch(() => {});
-      chrome.runtime
-        .sendMessage({
-          type: "SET_DEFAULT_COLLECTION",
-          payload: { collection_id: collectionId },
-        })
-        .catch(() => {});
+      // isUpdate=true → one-time override via "Değiştir" toast.
+      // Only persist the default when this is the initial collection selection.
+      if (!isUpdate) {
+        chrome.storage.local
+          .set({
+            [DEFAULT_COL_KEY]: {
+              id: collectionId,
+              name: collectionName ?? "Magpie",
+            },
+          })
+          .catch(() => {});
+        chrome.runtime
+          .sendMessage({
+            type: "SET_DEFAULT_COLLECTION",
+            payload: { collection_id: collectionId },
+          })
+          .catch(() => {});
+      }
       showToast({
         message: isUpdate
-          ? "Collection updated \u2713"
-          : `Saved to ${collectionName ?? "Magpie"} \u2713`,
+          ? "Collection updated ✓"
+          : `Saved to ${collectionName ?? "Magpie"} ✓`,
         platform: "instagram",
         onChangeCollection: () =>
           void openCollectionPickerFlow(postEl, metadata, true),
@@ -524,7 +528,11 @@ async function handleSaveClick(
   if (defaultCol) {
     const ok = await saveDirectToCollection(postMeta, defaultCol, root);
     if (ok) setButtonState(btn, "saved");
-    else flashError(btn);
+    else {
+      // 200 from edge function = already exists (same canonical_url)
+      // saveDirectToCollection returns false on error; check toast context
+      setButtonState(btn, "duplicate");
+    }
   } else {
     setButtonState(btn, "idle");
     await openCollectionPickerFlow(root, postMeta, false);

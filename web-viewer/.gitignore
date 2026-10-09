@@ -27,3 +27,5 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+# Plain .env (already in root .gitignore, added here for defense in depth)
+.env

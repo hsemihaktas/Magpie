@@ -33,7 +33,7 @@ export default function JoinCollectionModal({ onClose }: JoinCollectionModalProp
       if (!result || "error" in result) {
         setError(result.error);
       } else {
-        setSuccessName(result.collectionName);
+        setSuccessName(result.data.collectionName);
         setTimeout(() => {
           router.refresh();
           onClose();

@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest --run",
     "test:watch": "vitest",
-    "test:coverage": "vitest --run --coverage"
+    "test:coverage": "vitest --run --coverage",
+    "lint": "tsc --noEmit",
+    "test:rls": "echo 'Run: supabase test db (requires supabase start)'"
   },
   "devDependencies": {
     "@types/chrome": "0.0.268",

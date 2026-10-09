@@ -11,6 +11,9 @@
   ![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)
   ![Supabase](https://img.shields.io/badge/Supabase-Postgres+Auth+RLS-3fcf8e?logo=supabase)
   ![Chrome MV3](https://img.shields.io/badge/Chrome_Extension-MV3-4285f4?logo=googlechrome&logoColor=white)
+  
+  [![CI](https://github.com/hsemihaktas/Magpie/actions/workflows/ci.yml/badge.svg)](https://github.com/hsemihaktas/Magpie/actions/workflows/ci.yml)
+  [![Supabase RLS Tests](https://github.com/hsemihaktas/Magpie/actions/workflows/supabase.yml/badge.svg)](https://github.com/hsemihaktas/Magpie/actions/workflows/supabase.yml)
 </div>
 
 ---

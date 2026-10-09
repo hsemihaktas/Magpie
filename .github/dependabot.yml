@@ -1,0 +1,41 @@
+# dependabot.yml — Automated dependency updates
+# Checks for outdated npm packages in extension/ and web-viewer/ weekly.
+# Only opens PRs — does not auto-merge (review required).
+
+version: 2
+
+updates:
+  # Chrome Extension
+  - package-ecosystem: npm
+    directory: /extension
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "Europe/Istanbul"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - extension
+
+  # Next.js Web Viewer
+  - package-ecosystem: npm
+    directory: /web-viewer
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "Europe/Istanbul"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - web-viewer
+
+  # GitHub Actions themselves
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies
+      - github-actions

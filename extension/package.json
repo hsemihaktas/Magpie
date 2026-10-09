@@ -17,7 +17,7 @@
   "devDependencies": {
     "@types/chrome": "0.0.268",
     "@vitest/coverage-v8": "^2.0.0",
-    "esbuild": "0.25.0",
+    "esbuild": "0.28.2",
     "jsdom": "^25.0.0",
     "typescript": "5.6.3",
     "vitest": "^2.0.0"

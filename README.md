@@ -1,24 +1,26 @@
 <div align="center">
   <img src="web-viewer/app/icon-512.png" alt="Magpie" width="120" height="120" />
 
-  # Magpie
+# Magpie
 
-  **Sosyal medya postlarını arşivleyen Chrome uzantısı ve web görüntüleyicisi.**
-  Instagram ve X'ten istediğin postları koleksiyonlarına sessizce kaydet,
-  web arayüzünden dilediğin zaman gözbat. Paylaş, ortak çalış.
+**Sosyal medya postlarını arşivleyen Chrome uzantısı ve web görüntüleyicisi.**
+Instagram ve X'ten istediğin postları koleksiyonlarına sessizce kaydet,
+web arayüzünden dilediğin zaman gözbat. Paylaş, ortak çalış.
 
-  ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&logoColor=white)
-  ![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)
-  ![Supabase](https://img.shields.io/badge/Supabase-Postgres+Auth+RLS-3fcf8e?logo=supabase)
-  ![Chrome MV3](https://img.shields.io/badge/Chrome_Extension-MV3-4285f4?logo=googlechrome&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)
+![Supabase](https://img.shields.io/badge/Supabase-Postgres+Auth+RLS-3fcf8e?logo=supabase)
+![Chrome MV3](https://img.shields.io/badge/Chrome_Extension-MV3-4285f4?logo=googlechrome&logoColor=white)
 
-  [![CI](https://github.com/hsemihaktas/Magpie/actions/workflows/ci.yml/badge.svg)](https://github.com/hsemihaktas/Magpie/actions/workflows/ci.yml)
-  [![Supabase RLS Tests](https://github.com/hsemihaktas/Magpie/actions/workflows/supabase.yml/badge.svg)](https://github.com/hsemihaktas/Magpie/actions/workflows/supabase.yml)
+[![CI](https://github.com/hsemihaktas/Magpie/actions/workflows/ci.yml/badge.svg)](https://github.com/hsemihaktas/Magpie/actions/workflows/ci.yml)
+[![Supabase RLS Tests](https://github.com/hsemihaktas/Magpie/actions/workflows/supabase.yml/badge.svg)](https://github.com/hsemihaktas/Magpie/actions/workflows/supabase.yml)
+
 </div>
 
 ---
 
 ## İçindekiler
+
 - [Özellikler](#özellikler)
 - [Mimari](#mimari)
 - [Proje Yapısı](#proje-yapısı)
@@ -36,14 +38,18 @@
 ## Özellikler
 
 ### Chrome Uzantısı
+
 - **Instagram desteği** — feed, `/p/` (dialog ve doğrudan URL), Reels, hikayeler
 - **X / Twitter desteği** — tweetler, video poster thumbnail, alıntı tweet metni
+- **Threads desteği** — postlar, profil sayfaları
+- **Platform Adapter mimarisi** — yeni platformlar kolayca eklenebilir
 - **Tek tıkla kaydet** — gönderinin üzerinde beliren arşiv butonu
 - **Varsayılan koleksiyon** — doğrudan kaydeder, gerek yoksa picker'ı görmezsin
 - **Akıllı metadata çıkarma** — caption, yazar, thumbnail (video frame dahil)
 - **Tekrar kaydetme koruması** — canonical URL normalizasyonuyla aynı postu iki kez eklemez
 
 ### Web Görüntüleyici
+
 - **Sonsuz kaydırma** — cursor tabanlı pagination (OFFSET yok, her sayfa O(log n))
 - **Tam metin arama** — tsvector + GIN index, caption ve yazar adında ts_rank sıralaması
 - **Arama vurgulaması** — eşleşen kelimeler kart üzerinde işaretlenir, 300ms debounce, URL'ye yansır
@@ -53,12 +59,14 @@
 - **Karanlık mod** — sistem tercihin otomatik uygulanır
 
 ### Paylaşım & İşbirliği
+
 - **Paylaşımlı Koleksiyon** — tek kullanımlık 24 saatlik davet kodu, sadece okuma erişimi
 - **Ortak Koleksiyon** — post ekleyebilir, kendi postunu silebilir, yeni ortak davet edebilir
 - **Erişim iptali** — istediğin zaman herhangi bir üyeyi kaldır
 - **RLS koruması** — yetki kontrolleri Postgres RLS ile de uygulanır
 
 ---
+
 ## Mimari
 
 ```
@@ -67,16 +75,27 @@
 |   (MV3 / TypeScript)      |   |   (Next.js 14 App)        |
 |                           |   |                           |
 |  content-scripts/         |   |  app/feed/page.tsx        |
-|  +- instagram/            |   |  app/actions/             |
-|  |  +- button-injector    |   |  +- posts.ts (getPosts)   |
-|  |  +- metadata-extractor |   |  +- collections.ts        |
-|  |  +- observer           |   |  +- sharing.ts            |
-|  |  +- route-listener     |   |  +- members.ts            |
-|  +- x.ts, modal.ts        |   |  components/              |
-|  background/sw.ts         |   |  +- PostCardList.tsx      |
-|  shared/                  |   |  +- PostCard.tsx          |
-|  +- canonicalizeUrl.ts    |   |  +- SearchBar.tsx         |
-|  +- invite-code.ts        |   |  lib/action-result.ts     |
+|  +- adapters/             |   |  app/actions/             |
+|  |  +- instagram/         |   |  +- posts.ts (getPosts)   |
+|  |  |  +- adapter.ts      |   |  +- collections.ts        |
+|  |  |  +- button-inject.  |   |  +- sharing.ts            |
+|  |  |  +- metadata.ts     |   |  +- members.ts            |
+|  |  |  +- post-finder.ts  |   |  components/              |
+|  |  |  +- url-utils.ts    |   |  +- PostCardList.tsx      |
+|  |  +- x/                 |   |  +- PostCard.tsx          |
+|  |  +- threads/           |   |  +- SearchBar.tsx         |
+|  +- instagram-entry.ts    |   |  lib/action-result.ts     |
+|  +- x-entry.ts            |   |                           |
+|  +- threads-entry.ts      |   |                           |
+|  +- modal.ts, toast.ts    |   |                           |
+|  background/sw.ts         |   |                           |
+|  shared/                  |   |                           |
+|  +- platform.ts           |   |                           |
+|  +- core/                 |   |                           |
+|  |  +- index.ts           |   |                           |
+|  |  +- save-flow.ts       |   |                           |
+|  |  +- observer.ts        |   |                           |
+|  +- canonicalizeUrl.ts    |   |                           |
 +---------------------------+   +---------------------------+
               |                             |
               v                             v
@@ -108,19 +127,42 @@ magpie/
 |   +-- manifest.json
 |   +-- build.mjs                     esbuild yapılandırması
 |   +-- content-scripts/
-|   |   +-- instagram/
-|   |   |   +-- button-injector.ts
-|   |   |   +-- metadata-extractor.ts
-|   |   |   +-- observer.ts           MutationObserver (SPA)
-|   |   |   +-- route-listener.ts, permalink.ts, storage.ts
-|   |   +-- x.ts, modal.ts, toast.ts
+|   |   +-- adapters/                 Platform adapter'ları
+|   |   |   +-- instagram/
+|   |   |   |   +-- adapter.ts        InstagramAdapter (PlatformAdapter impl)
+|   |   |   |   +-- button-injection.ts
+|   |   |   |   +-- metadata.ts
+|   |   |   |   +-- post-finder.ts
+|   |   |   |   +-- url-utils.ts
+|   |   |   |   +-- selectors.ts
+|   |   |   +-- x/
+|   |   |   |   +-- adapter.ts        XAdapter
+|   |   |   |   +-- button-injection.ts
+|   |   |   |   +-- metadata.ts
+|   |   |   |   +-- post-finder.ts
+|   |   |   |   +-- selectors.ts
+|   |   |   +-- threads/
+|   |   |       +-- adapter.ts        ThreadsAdapter
+|   |   |       +-- ...
+|   |   +-- instagram-entry.ts        Instagram entry point
+|   |   +-- x-entry.ts                X/Twitter entry point
+|   |   +-- threads-entry.ts          Threads entry point
+|   |   +-- modal.ts                  Koleksiyon seçici modal
+|   |   +-- toast.ts                  Bildirim toast'ları
 |   +-- background/service-worker.ts
 |   +-- popup/popup.ts
 |   +-- shared/
-|       +-- canonicalizeUrl.ts        Instagram/X URL normalizasyonu
-|       +-- invite-code.ts            CSPRNG 8 haneli kod üretimi
-|       +-- env.d.ts                  build-time process.env tipleri
-|       +-- types/
+|   |   +-- platform.ts               PlatformAdapter interface
+|   |   +-- core/
+|   |   |   +-- index.ts              startPlatformCore()
+|   |   |   +-- save-flow.ts          Kaydetme akışı
+|   |   |   +-- observer.ts           MutationObserver
+|   |   |   +-- route-listener.ts     SPA navigasyon
+|   |   +-- canonicalizeUrl.ts        URL normalizasyonu
+|   |   +-- sendMessage.ts            Chrome messaging helper
+|   |   +-- types/
+|   +-- docs/
+|       +-- ADDING_A_PLATFORM.md      Yeni platform ekleme rehberi
 |
 +-- web-viewer/                       Next.js 14 Web Uygulaması
 |   +-- app/
@@ -164,33 +206,41 @@ magpie/
 ```
 
 ---
+
 ## Kurulum
 
 ### Ön Gereksinimler
+
 - Node.js 18+
 - [Supabase CLI](https://supabase.com/docs/guides/cli) — `brew install supabase/tap/supabase`
 - Google Chrome
 
 ### 1. Supabase Projesi
+
 ```bash
 supabase link --project-ref <proje-ref>
 supabase db push
 ```
+
 Dashboard → Settings → API:
+
 - **Project URL** → `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL`
 - **anon public** → `SUPABASE_ANON_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- **service_role** → `SUPABASE_SERVICE_ROLE_KEY` *(yalnızca sunucu tarafı)*
+- **service_role** → `SUPABASE_SERVICE_ROLE_KEY` _(yalnızca sunucu tarafı)_
 
 ### 2. Chrome Uzantısı
+
 ```bash
 cd extension
 cp .env.example .env
 npm install
 npm run build
 ```
+
 `chrome://extensions` → Geliştirici modu → Paketlenmemişi yükle → `extension/` seç.
 
 ### 3. Web Görüntüleyici
+
 ```bash
 cd web-viewer
 cp .env.example .env.local
@@ -203,6 +253,7 @@ npm run build   # production check
 ## Kullanım
 
 ### Uzantıyla Post Kaydetme
+
 1. Instagram veya X'te bir postun üzerine gel.
 2. Sağ üst köşede beliren **arşiv butonuna** tıkla.
 3. İlk kullanımda koleksiyon seçici açılır.
@@ -211,35 +262,39 @@ npm run build   # production check
 
 ### Web Görüntüleyicide Yönetim
 
-| Eylem | Nasıl |
-|---|---|
-| Koleksiyon yeniden adlandır | Kenar çubuğunda üzerine gel → kalem ikonu |
-| Varsayılan değiştir | Üzerine gel → yıldız ikonu |
-| Post sil | Kartın üzerine gel → kırmızı çöp ikonu |
-| Birden fazla sil | **Seç** → kartlara tıkla → **Sil** |
-| Koleksiyona filtrele | Sol kenarda koleksiyon adına tıkla |
-| Arama | Üstteki arama çubuğu (300ms debounce, URL'ye yansır) |
-| Koleksiyon paylaş | Paylaş ikonu → kodu kopyala |
-| Koleksiyona katıl | Kenar çubuğu altı → **Koleksiyona Katıl** |
+| Eylem                       | Nasıl                                                |
+| --------------------------- | ---------------------------------------------------- |
+| Koleksiyon yeniden adlandır | Kenar çubuğunda üzerine gel → kalem ikonu            |
+| Varsayılan değiştir         | Üzerine gel → yıldız ikonu                           |
+| Post sil                    | Kartın üzerine gel → kırmızı çöp ikonu               |
+| Birden fazla sil            | **Seç** → kartlara tıkla → **Sil**                   |
+| Koleksiyona filtrele        | Sol kenarda koleksiyon adına tıkla                   |
+| Arama                       | Üstteki arama çubuğu (300ms debounce, URL'ye yansır) |
+| Koleksiyon paylaş           | Paylaş ikonu → kodu kopyala                          |
+| Koleksiyona katıl           | Kenar çubuğu altı → **Koleksiyona Katıl**            |
 
 ---
 
 ## Koleksiyon Türleri
 
 ### Kişisel Koleksiyon
+
 Yalnızca sahibi görür, ekler, siler.
 
 ### Paylaşımlı Koleksiyon (Görüntüleyici)
+
 - Sahip tek kullanımlık 24 saatlik davet kodu üretir.
 - Davet edilen kişi yalnızca **okuyabilir** — ekleyemez, silemez.
 - Sahip herhangi bir üyeyi istediği zaman kaldırabilir.
 
 ### Ortak Koleksiyon (Collaborator)
+
 - Sahip **"Ortak"** rolü seçip davet kodu üretir.
 - Ortak üye: post ekleyebilir, yalnızca kendi eklediğini silebilir, yeni ortak davet edebilir.
 - RLS politikaları bu kuralları veritabanı seviyesinde de uygular.
 
 ---
+
 ## Veritabanı Şeması
 
 ```sql
@@ -270,21 +325,21 @@ collection_members (id, collection_id, member_user_id,
 
 ### Önemli İndeksler
 
-| İndeks | Amaç |
-|---|---|
-| `idx_sp_user_cursor (user_id, saved_at DESC, id DESC)` | Cursor pagination — koleksiyonsuz feed |
+| İndeks                                                             | Amaç                                    |
+| ------------------------------------------------------------------ | --------------------------------------- |
+| `idx_sp_user_cursor (user_id, saved_at DESC, id DESC)`             | Cursor pagination — koleksiyonsuz feed  |
 | `idx_sp_collection_cursor (collection_id, saved_at DESC, id DESC)` | Cursor pagination — koleksiyon filtreli |
-| `idx_sp_search_vector` GIN | Full-text search |
-| `uq_saved_posts_user_canonical` | Canonical URL dedup |
+| `idx_sp_search_vector` GIN                                         | Full-text search                        |
+| `uq_saved_posts_user_canonical`                                    | Canonical URL dedup                     |
 
 ### RLS Politikaları
 
-| Tablo | Erişim |
-|---|---|
-| `collections` | Sahip: tam · Üye: SELECT |
-| `saved_posts` | Sahip: tam · viewer: SELECT · collaborator: SELECT + INSERT/DELETE (kendi) |
-| `collection_invites` | Sahip: SELECT/INSERT · Herkese: tek kullanımlık redeem |
-| `collection_members` | Üye: kendi · Sahip: koleksiyonundaki hepsi |
+| Tablo                | Erişim                                                                     |
+| -------------------- | -------------------------------------------------------------------------- |
+| `collections`        | Sahip: tam · Üye: SELECT                                                   |
+| `saved_posts`        | Sahip: tam · viewer: SELECT · collaborator: SELECT + INSERT/DELETE (kendi) |
+| `collection_invites` | Sahip: SELECT/INSERT · Herkese: tek kullanımlık redeem                     |
+| `collection_members` | Üye: kendi · Sahip: koleksiyonundaki hepsi                                 |
 
 ---
 
@@ -330,6 +385,7 @@ supabase stop
 ```
 
 `supabase/tests/` altındaki dosyalar:
+
 - `01_rls_collections_and_posts.sql` — sahip/viewer/collaborator/stranger senaryoları
 - `02_rls_invite_codes.sql` — süresi dolmuş/kullanılmış kod, rate limit
 
@@ -338,18 +394,20 @@ supabase stop
 ## Ortam Değişkenleri
 
 ### `extension/.env`
-| Değişken | Açıklama |
-|---|---|
-| `SUPABASE_URL` | Supabase proje URL'si |
-| `SUPABASE_ANON_KEY` | Anonim (public) anahtar |
-| `WEB_VIEWER_URL` | Web görüntüleyici URL'si |
+
+| Değişken            | Açıklama                 |
+| ------------------- | ------------------------ |
+| `SUPABASE_URL`      | Supabase proje URL'si    |
+| `SUPABASE_ANON_KEY` | Anonim (public) anahtar  |
+| `WEB_VIEWER_URL`    | Web görüntüleyici URL'si |
 
 ### `web-viewer/.env.local`
-| Değişken | Açıklama |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase proje URL'si |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Anonim (public) anahtar |
-| `SUPABASE_SERVICE_ROLE_KEY` | Servis rolü — **yalnızca sunucu tarafı** |
+
+| Değişken                        | Açıklama                                 |
+| ------------------------------- | ---------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Supabase proje URL'si                    |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Anonim (public) anahtar                  |
+| `SUPABASE_SERVICE_ROLE_KEY`     | Servis rolü — **yalnızca sunucu tarafı** |
 
 ---
 

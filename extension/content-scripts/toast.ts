@@ -114,6 +114,45 @@ const TOAST_CSS = `
   outline: 2px solid #1d9bf0;
   outline-offset: 2px;
 }
+
+/* Threads */
+.magpie-toast--threads {
+  background: #ffffff;
+  color: #000000;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.15);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  .magpie-toast--threads {
+    background: #1c1c1c;
+    color: #ffffff;
+  }
+}
+.magpie-toast--threads .magpie-toast__message {
+  flex: 1;
+}
+.magpie-toast--threads .magpie-toast__change {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: #0095f6;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  white-space: nowrap;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+.magpie-toast--threads .magpie-toast__change:hover {
+  background: rgba(0,149,246,.08);
+}
+.magpie-toast--threads .magpie-toast__change:focus-visible {
+  outline: 2px solid #0095f6;
+  outline-offset: 2px;
+}
 `;
 
 /**
@@ -135,7 +174,7 @@ export interface ToastOptions {
   /** Human-readable confirmation or status message to display. */
   message: string;
   /** Platform the user is currently browsing — determines visual style. */
-  platform: "instagram" | "x";
+  platform: "instagram" | "x" | "threads";
   /**
    * Milliseconds before the toast auto-dismisses.
    * @default 4000  (Requirement 11.6)

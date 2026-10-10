@@ -3,15 +3,13 @@
   "name": "Magpie",
   "version": "1.0.0",
   "description": "Save posts from Instagram and X to your own private archive — without triggering any platform interaction.",
-  "permissions": [
-    "storage",
-    "identity",
-    "alarms"
-  ],
+  "permissions": ["storage", "identity", "alarms"],
   "host_permissions": [
     "https://www.instagram.com/*",
     "https://x.com/*",
     "https://twitter.com/*",
+    "https://www.threads.net/*",
+    "https://threads.net/*",
     "https://*.supabase.co/*"
   ],
   "background": {
@@ -35,28 +33,21 @@
   },
   "content_scripts": [
     {
-      "matches": [
-        "https://www.instagram.com/*"
-      ],
-      "js": [
-        "dist/content-scripts/instagram.js"
-      ],
-      "css": [
-        "dist/styles/toast.css"
-      ],
+      "matches": ["https://www.instagram.com/*"],
+      "js": ["dist/content-scripts/instagram.js"],
+      "css": ["dist/styles/toast.css"],
       "run_at": "document_idle"
     },
     {
-      "matches": [
-        "https://x.com/*",
-        "https://twitter.com/*"
-      ],
-      "js": [
-        "dist/content-scripts/x.js"
-      ],
-      "css": [
-        "dist/styles/toast.css"
-      ],
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["dist/content-scripts/x.js"],
+      "css": ["dist/styles/toast.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.threads.net/*", "https://threads.net/*"],
+      "js": ["dist/content-scripts/threads.js"],
+      "css": ["dist/styles/toast.css"],
       "run_at": "document_idle"
     }
   ],
@@ -71,7 +62,9 @@
       "matches": [
         "https://www.instagram.com/*",
         "https://x.com/*",
-        "https://twitter.com/*"
+        "https://twitter.com/*",
+        "https://www.threads.net/*",
+        "https://threads.net/*"
       ]
     }
   ]

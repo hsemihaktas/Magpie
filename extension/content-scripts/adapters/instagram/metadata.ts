@@ -1,47 +1,23 @@
 /**
- * metadata-extractor.ts
- * Media root container'ından metadata çıkarır. Yalnızca render edilmiş DOM üzerinde çalışır.
- *
- * Önemli kurallar:
- *  - Caption: önce DOM (h1 → feed span → reels div), og:* yalnızca sayfa bu gönderiye aitse (SPA'da meta bayat kalır).
- *  - root TEK bir gönderinin kapsayıcısı olmalı (reels görüntüleyicide görünen video'nun kapsayıcısı).
- *  - Frame cache DOM elemanına değil, video kaynağına (blob URL) göre doğrulanır; Instagram elemanları geri dönüştürür.
+ * adapters/instagram/metadata.ts
+ * Instagram metadata extraction from DOM.
  */
 
-import type { ExtractedMetadata, NormalizedMediaLink } from "./types";
+import type { PostMetadata } from "../../../shared/types/domain";
+import type { NormalizedPostLink } from "../../../shared/platform";
+import { RESERVED_SEGMENTS, REELS_USER_RE, MIN_IMG_PX } from "./selectors";
+import { shortcodeFromPath } from "./url-utils";
 
-// ---------------------------------------------------------------------------
-// Sabitler / yardımcılar
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────────────────────────────────────
 
-/** Kullanıcı adı olmayan rezerve Instagram path segment'leri. */
-const RESERVED = new Set([
-  "p",
-  "reel",
-  "reels",
-  "tv",
-  "explore",
-  "stories",
-  "direct",
-  "accounts",
-  "tags",
-  "locations",
-]);
-
-/** /reels/ görüntüleyicide yazar linki /username/reels/ biçimindedir. */
-const REELS_USER_RE = /^\/([^/]+)\/reels\/$/;
-
-const MIN_IMG_PX = 200;
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((r) => setTimeout(r, ms));
-
-/** Tek bir alan hata verirse tüm metadata kaybolmasın. */
+/** Safe wrapper that catches errors and returns fallback */
 function safe<T>(fn: () => T, fallback: T): T {
   try {
     return fn();
   } catch (err) {
-    console.warn("[Magpie] Alan çıkarılamadı:", err);
+    console.warn("[Magpie] Field extraction error:", err);
     return fallback;
   }
 }
@@ -54,36 +30,28 @@ function meta(property: string): string | null {
   );
 }
 
-function shortcodeFromPath(path: string): string | null {
-  return path.match(/\/(?:p|reel|reels|tv)\/([\w-]{8,15})/)?.[1] ?? null;
-}
-
 /**
- * og:* ve JSON-LD yalnızca TAM sayfa yüklemesinde taze olur. SPA geçişinde (reels'te kaydırma,
- * modal açma) bir önceki gönderinin verisi kalır. Bu yüzden: URL'deki kod, çıkarılan link'te
- * geçmeli ve og:url (varsa) aynı kodu içermeli.
+ * Checks if og:* meta tags are fresh for the given link.
+ * In SPA, meta tags may be stale from the previous page.
  */
-function metaIsForLink(link: NormalizedMediaLink): boolean {
+function metaIsForLink(link: NormalizedPostLink): boolean {
   const code = shortcodeFromPath(location.pathname);
   if (!code) return false;
-  const inLink = Object.values(link as unknown as Record<string, unknown>).some(
-    (v) => typeof v === "string" && v.includes(code),
-  );
+
+  const inLink = link.canonicalUrl.includes(code);
   if (!inLink) return false;
+
   const ogUrl = meta("og:url");
   return !ogUrl || ogUrl.includes(code);
 }
 
-/**
- * og:description / og:title içinden caption'ı çıkarır.
- * Format: 'N likes, N comments - user on date: "caption".'
- */
+/** Parses caption from og:description format */
 function parseCaptionFromOg(desc: string): string | undefined {
   const quoted = desc.match(
     /:\s*[\u201c\u201d"]([\s\S]+)[\u201c\u201d"]\s*\.?\s*$/,
   );
   if (quoted?.[1]) return quoted[1].trim();
-  // Uzun caption'larda açıklama kesilir ve kapanış tırnağı olmaz
+
   const idx = desc.indexOf(": ");
   if (idx > 0 && idx < 150) {
     const rest = desc
@@ -95,7 +63,7 @@ function parseCaptionFromOg(desc: string): string | undefined {
   return undefined;
 }
 
-/** <br> → \n, "devamını gör" butonlarını at, satır yapısını koru. */
+/** Cleans text content: br→\n, removes "more" buttons */
 function cleanText(el: Element): string | undefined {
   const clone = el.cloneNode(true) as HTMLElement;
   clone.querySelectorAll("[role='button']").forEach((b) => b.remove());
@@ -108,49 +76,56 @@ function cleanText(el: Element): string | undefined {
   return text || undefined;
 }
 
-// ---------------------------------------------------------------------------
-// Author
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
+// Author Extraction
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface AuthorInfo {
   authorUsername?: string;
   authorUrl?: string;
 }
 
-/**
- * Kaynaklar (sırayla):
- *  1. header a[href="/username/"]        — gönderi sayfası
- *  2. a[href="/username/reels/"]         — reels görüntüleyici
- *  3. a[href="#"] + SVG + kısa metin     — collab / etiketli kullanıcı
- *  4. h2 ve genel fallback
- */
 function extractAuthor(root: Element): AuthorInfo {
   const names: string[] = [];
 
   const push = (slug: string | null | undefined): void => {
-    if (!slug || RESERVED.has(slug) || slug.length > 50 || names.includes(slug))
+    if (
+      !slug ||
+      RESERVED_SEGMENTS.has(slug) ||
+      slug.length > 50 ||
+      names.includes(slug)
+    )
       return;
     names.push(slug);
   };
+
   const profileSlug = (a: Element): string | undefined =>
     a.getAttribute("href")?.match(/^\/([^/]+)\/$/)?.[1];
 
+  // Priority 1: header profile links
   root
     .querySelectorAll("header a[href^='/']")
     .forEach((a) => push(profileSlug(a)));
+
+  // Priority 2: /username/reels/ links (reels viewer)
   root
     .querySelectorAll("a[href]")
     .forEach((a) => push(a.getAttribute("href")?.match(REELS_USER_RE)?.[1]));
+
+  // Priority 3: Collab/tagged users with SVG
   root.querySelectorAll('a[href="#"]').forEach((a) => {
     const t = a.textContent?.trim() ?? "";
     if (a.querySelector("svg") && /^[\w.]{1,30}$/.test(t)) push(t);
   });
 
-  if (!names.length)
+  // Priority 4: h2 links
+  if (!names.length) {
     root
       .querySelectorAll("h2 a[href^='/']")
       .forEach((a) => push(profileSlug(a)));
+  }
 
+  // Priority 5: any profile link
   if (!names.length) {
     for (const a of Array.from(root.querySelectorAll("a[href^='/']"))) {
       push(profileSlug(a));
@@ -165,14 +140,10 @@ function extractAuthor(root: Element): AuthorInfo {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Images
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
+// Image Extraction
+// ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * İçerik görselleri (profil resimleri hariç).
- * Genişlik bilinmeyen (0) ya da ≤ 200px olanlar atılır: avatar, ikon, yüklenmemiş lazy-load.
- */
 function extractImages(root: Element): string[] {
   const seen = new Set<string>();
   const results: string[] = [];
@@ -180,6 +151,7 @@ function extractImages(root: Element): string[] {
   for (const img of Array.from(
     root.querySelectorAll<HTMLImageElement>("img"),
   )) {
+    // Skip profile pictures
     if (/profil|profile/i.test(img.alt) || img.closest("header") !== null)
       continue;
 
@@ -195,12 +167,11 @@ function extractImages(root: Element): string[] {
   return results;
 }
 
-// ---------------------------------------------------------------------------
-// Video + frame cache
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
+// Video Extraction & Thumbnail Cache
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface CachedFrame {
-  /** Yakalandığı video kaynağı (blob URL her video için benzersiz) */
   src: string;
   frame: string;
 }
@@ -215,7 +186,6 @@ function getCachedFrame(
   video: HTMLVideoElement,
 ): string | undefined {
   const hit = frameCache.get(root);
-  // Eleman başka bir gönderiye dönüştüyse kaynak değişmiştir → cache geçersiz
   return hit && hit.src === videoKey(video) ? hit.frame : undefined;
 }
 
@@ -229,11 +199,10 @@ function captureFrame(video: HTMLVideoElement): string | null {
     c.getContext("2d")?.drawImage(video, 0, 0, c.width, c.height);
     return c.toDataURL("image/jpeg", 0.8);
   } catch {
-    return null; // canvas tainted
+    return null;
   }
 }
 
-/** Öncelik: cache (kaynak doğrulamalı) → poster → anlık kare. */
 function extractVideo(root: Element): {
   thumbnailUrl?: string;
   mediaUrl?: string;
@@ -253,9 +222,11 @@ function extractVideo(root: Element): {
   return { thumbnailUrl: captureFrame(video) ?? undefined, mediaUrl };
 }
 
+const sleep = (ms: number): Promise<void> =>
+  new Promise((r) => setTimeout(r, ms));
+
 /**
- * Video olan gönderinin ilk karesini arka planda hazırlar (max 12 sn, 250 ms aralıkla).
- * Aynı root için tek döngü çalışır; eleman DOM'dan çıkarsa ya da video değişirse durur.
+ * Pre-captures video thumbnail in background.
  */
 export async function warmUpVideoThumbnail(root: Element): Promise<void> {
   if (inFlight.has(root)) return;
@@ -281,16 +252,16 @@ export async function warmUpVideoThumbnail(root: Element): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Caption
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
+// Caption Extraction
+// ─────────────────────────────────────────────────────────────────────────────
 
 function extractCaption(
   root: Element,
-  link: NormalizedMediaLink,
+  link: NormalizedPostLink,
   authorUsername?: string,
 ): string | undefined {
-  // 1. <h1>: gönderi/reel detay sayfası. root'un MAIN/dialog/ARTICLE olması fark etmez.
+  // 1. h1: post/reel detail page
   const h1 = root.querySelector("h1[dir='auto']") ?? root.querySelector("h1");
   if (h1) {
     const t = cleanText(h1);
@@ -306,10 +277,14 @@ function extractCaption(
     if (t) return t;
   }
 
-  // 3. Reels görüntüleyici (yalnızca /reels/ akışı): caption div[dir="auto"]
-  // Direkt sayfa yüklemesinde (/p/ veya /reel/ URL) bu adım atlanır; og:meta tazedir ve step 4'te kullanılır.
-  const onDirectPage = !!shortcodeFromPath(location.pathname);
-  if (root.tagName !== "ARTICLE" && !onDirectPage) {
+  // 3. Reels viewer: caption div[dir="auto"]
+  // This applies to /reels/ pages AND reel dialogs (non-ARTICLE containers)
+  const pathname = location.pathname;
+  const isReelsPage = pathname.startsWith("/reels/");
+  const isReelDialog =
+    root.tagName !== "ARTICLE" && root.closest('[role="dialog"]') !== null;
+
+  if (isReelsPage || isReelDialog || root.tagName !== "ARTICLE") {
     const best = Array.from(
       root.querySelectorAll<HTMLElement>("div[dir='auto']"),
     )
@@ -322,7 +297,7 @@ function extractCaption(
     }
   }
 
-  // 4. og:description / og:title: sadece sayfa bu gönderiye aitse (SPA'da bayat olabilir)
+  // 4. og:description / og:title (only if fresh)
   if (metaIsForLink(link)) {
     const fromDesc = parseCaptionFromOg(meta("og:description") ?? "");
     if (fromDesc) return fromDesc;
@@ -330,7 +305,7 @@ function extractCaption(
     if (fromTitle) return fromTitle;
   }
 
-  // 5. Son çare yalnızca feed'de. Gönderi sayfasında span'lar yorumlardır ("Roll"), caption yoksa boş dön.
+  // 5. Last resort: longest span in feed
   if (shortcodeFromPath(location.pathname)) return undefined;
 
   const candidates = Array.from(
@@ -351,9 +326,9 @@ function extractCaption(
   return candidates[0];
 }
 
-// ---------------------------------------------------------------------------
-// Tarih
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
+// Date Extraction
+// ─────────────────────────────────────────────────────────────────────────────
 
 function getJsonLdDate(): string | undefined {
   for (const sc of Array.from(
@@ -371,19 +346,15 @@ function getJsonLdDate(): string | undefined {
         if (typeof d === "string") return new Date(d).toISOString();
       }
     } catch {
-      /* geçersiz JSON / geçersiz tarih */
+      /* invalid JSON / invalid date */
     }
   }
   return undefined;
 }
 
-/**
- * Sıra: caption satırındaki time → yorum listesi (ul) dışındaki ilk time → herhangi time → JSON-LD (taze ise).
- * Yorum listesi dışlanır: caption'sız gönderide yorumun tarihi alınmasın.
- */
 function extractPublishedAt(
   root: Element,
-  link: NormalizedMediaLink,
+  link: NormalizedPostLink,
 ): string | undefined {
   const times = Array.from(
     root.querySelectorAll<HTMLTimeElement>("time[datetime]"),
@@ -398,18 +369,18 @@ function extractPublishedAt(
   return metaIsForLink(link) ? getJsonLdDate() : undefined;
 }
 
-// ---------------------------------------------------------------------------
-// Ana fonksiyon
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Export
+// ─────────────────────────────────────────────────────────────────────────────
 
-export function extractMetadata(
+/**
+ * Extracts all available metadata from an Instagram post element.
+ */
+export function extractInstagramMetadata(
   root: Element,
-  link: NormalizedMediaLink,
-): ExtractedMetadata {
-  const { authorUsername, authorUrl } = safe<AuthorInfo>(
-    () => extractAuthor(root),
-    {},
-  );
+  link: NormalizedPostLink,
+): Partial<PostMetadata> {
+  const { authorUsername, authorUrl } = safe(() => extractAuthor(root), {});
   const video = safe(
     () => extractVideo(root),
     {} as { thumbnailUrl?: string; mediaUrl?: string },
@@ -421,12 +392,24 @@ export function extractMetadata(
   );
   const publishedAt = safe(() => extractPublishedAt(root, link), undefined);
 
+  // Build media_urls array
+  const media_urls: string[] = [];
+  if (video.thumbnailUrl) media_urls.push(video.thumbnailUrl);
+  if (video.mediaUrl && video.mediaUrl !== video.thumbnailUrl) {
+    media_urls.push(video.mediaUrl);
+  }
+  if (images.length > 0) {
+    for (const img of images) {
+      if (!media_urls.includes(img)) media_urls.push(img);
+    }
+  }
+
   return {
-    authorUsername,
-    authorUrl,
-    caption,
-    thumbnailUrl: video.thumbnailUrl ?? images[0],
-    mediaUrl: video.mediaUrl,
-    publishedAt,
+    author_username: authorUsername ?? null,
+    author_display_name: null,
+    author_avatar_url: authorUrl ?? null,
+    content_text: caption ?? null,
+    media_urls,
+    post_timestamp: publishedAt ?? null,
   };
 }

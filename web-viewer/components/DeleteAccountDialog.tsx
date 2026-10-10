@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { createBrowserClient } from "@/lib/supabase.browser";
 import { ModalPortal } from "@/components/ModalPortal";
 import { deleteAccount } from "@/app/actions/auth";
 
@@ -20,7 +21,9 @@ export function DeleteAccountDialog({ email, onClose }: DeleteAccountDialogProps
     startTransition(async () => {
       const result = await deleteAccount();
       if (result.ok) {
-        // Hard redirect: clears all client state + stale session cookie
+        // Sign out first to clear sb-* cookies so login page doesn't
+        // show "expired" banner on next visit.
+        try { await createBrowserClient().auth.signOut(); } catch { /* ignore */ }
         window.location.replace("/login");
         return;
       } else {

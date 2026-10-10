@@ -56,7 +56,16 @@ export async function middleware(request: NextRequest) {
       loginUrl.searchParams.set("reason", "expired");
     }
 
-    return NextResponse.redirect(loginUrl);
+    const loginRedirect = NextResponse.redirect(loginUrl);
+    // Clear stale auth cookies so the expired banner only shows once
+    if (hadSessionCookie) {
+      for (const cookie of request.cookies.getAll()) {
+        if (cookie.name.startsWith("sb-")) {
+          loginRedirect.cookies.delete(cookie.name);
+        }
+      }
+    }
+    return loginRedirect;
   }
 
   // ── Authenticated → login page ──────────────────────────────────────────

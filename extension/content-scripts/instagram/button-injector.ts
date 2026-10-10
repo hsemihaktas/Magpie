@@ -4,7 +4,7 @@
  *
  * Yerleşimler:
  *   1. Feed (/)               → section içindeki sol action group
- *   2. Post modal / dialog    → section içinde bookmark'ın yanı
+ *   2. Post modal / dialog    → section içinde Beğen'in yanı
  *   3. /p/ direct             → section içindeki sol action group
  *   4. /reels/, /reel/ ve reel dialog → DİKEY action bar ("Daha fazla"dan önce)
  *
@@ -37,13 +37,37 @@ const LAYOUT_ATTR = "data-magpie-layout"; // "section" | "vertical"
 const PATH_ATTR = "data-magpie-path"; // buton hangi URL için hazırlandı
 const DEFAULT_COL_KEY = "magpie_default_collection";
 
+/**
+ * "before" = Beğen'in soluna, "after" = Beğen'in sağına,
+ * "end" = Paylaş butonunun sağına (Beğen, Yorum, Paylaş, [Magpie]).
+ */
+const INSERT_POSITION: "before" | "after" | "end" = "end";
+
+const SHARE_LABELS = ["Gönderi Paylaş", "Paylaş", "Share", "Share Post"];
+
+/** true yaparsan konsolda [Magpie] debug logları görürsün. */
+const DEBUG_INJECT = false;
+
 // Instagram arayüz dili farklıysa buraya etiket ekle.
+const LIKE_LABELS = [
+  "Beğen",
+  "Beğenmekten vazgeç",
+  "Beğeniyi geri al",
+  "Like",
+  "Unlike",
+];
+const COMMENT_LABELS = ["Yorum Yap", "Comment"];
+
 const LIKE_SEL =
-  'svg[aria-label="Beğen"], svg[aria-label="Like"], svg[aria-label="Beğeniyi geri al"], svg[aria-label="Unlike"]';
+  'svg[aria-label="Beğen"], svg[aria-label="Like"], svg[aria-label="Beğeniyi geri al"], svg[aria-label="Beğenmekten vazgeç"], svg[aria-label="Unlike"]';
 // Kaydedilmiş gönderide etiket "Kaldır"/"Remove" olur — hepsi dahil.
 const SAVE_SEL =
   'svg[aria-label="Kaydet"], svg[aria-label="Save"], svg[aria-label="Kaldır"], svg[aria-label="Remove"]';
 const MORE_SEL = 'svg[aria-label="Daha fazla"], svg[aria-label="More"]';
+
+function dbg(...args: unknown[]): void {
+  if (DEBUG_INJECT) console.debug("[Magpie]", ...args);
+}
 
 // ---------------------------------------------------------------------------
 // Buton oluşturma
@@ -238,12 +262,96 @@ function findActionSection(scope: Element): Element | null {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Sağlam action-bar enjeksiyonu (feed, dialog, modal, /p/, reel sayfası)
+// ---------------------------------------------------------------------------
+
+/**
+ * Verilen kapsamdaki TÜM yatay aksiyon çubuklarını bulur ve butonu ekler.
+ * section / main / media-root'a bağımlı DEĞİLDİR:
+ *   1. 24px'lik Beğen ikonunu bul (yorumlardaki 12px kalpler elenir).
+ *   2. Yukarı çık; hem Beğen hem Yorum ikonunu içeren ilk ata = aksiyon çubuğu.
+ *   3. Butonu, Beğen kapsayıcısının (barın doğrudan çocuğu) yanına ekle.
+ * Çift ekleme, bar içindeki BUTTON_SELECTOR kontrolüyle engellenir.
+ */
+function injectIntoActionBar(root: ParentNode): boolean {
+  let injected = false;
+
+  const hasComment = (el: Element): boolean =>
+    COMMENT_LABELS.some((l) => el.querySelector(`svg[aria-label="${l}"]`));
+
+  root.querySelectorAll<SVGElement>("svg").forEach((svg) => {
+    const lbl = svg.getAttribute("aria-label") ?? "";
+    if (!LIKE_LABELS.includes(lbl)) return;
+    if (Number(svg.getAttribute("height") ?? 0) < 20) return;
+
+    let likeWrap: Element = svg;
+    let bar: Element | null = svg.parentElement;
+    while (bar && bar !== document.body && !hasComment(bar)) {
+      likeWrap = bar;
+      bar = bar.parentElement;
+    }
+    if (!bar || bar === document.body) {
+      dbg("skip: yorum ikonlu ata bulunamadı");
+      return;
+    }
+
+    // Dikey bar (reels) ayrı yolla ekleniyor; video içeren çok geniş atayı da atla
+    if (bar.querySelector(MORE_SEL) && bar.querySelector(SAVE_SEL)) {
+      dbg("skip: dikey bar, injectIntoVerticalBar halledecek");
+      return;
+    }
+    if (bar.querySelector("video")) {
+      dbg("skip: bar video içeriyor (çok geniş ata)");
+      return;
+    }
+    if (bar.querySelector(BUTTON_SELECTOR)) return; // zaten ekli
+
+    // Paylaş butonunun bardaki doğrudan çocuk kapsayıcısını bul
+    let shareWrap: Element | null = null;
+    if (INSERT_POSITION === "end") {
+      const shareSvg = Array.from(bar.querySelectorAll("svg")).find((s) =>
+        SHARE_LABELS.includes(s.getAttribute("aria-label") ?? ""),
+      );
+      if (shareSvg) {
+        let el: Element = shareSvg;
+        while (el.parentElement && el.parentElement !== bar) {
+          el = el.parentElement;
+        }
+        if (el.parentElement === bar) shareWrap = el;
+      }
+      if (!shareWrap) dbg("Paylaş ikonu bulunamadı, Beğen'in sağına eklenecek");
+    }
+
+    dbg("✓ aksiyon çubuğu bulundu, buton ekleniyor:", INSERT_POSITION);
+    placeSectionButton((btn) => {
+      if (shareWrap) {
+        shareWrap.insertAdjacentElement("afterend", btn);
+      } else {
+        likeWrap.insertAdjacentElement(
+          INSERT_POSITION === "before" ? "beforebegin" : "afterend",
+          btn,
+        );
+      }
+    });
+    injected = true;
+  });
+
+  if (!injected) dbg("injectIntoActionBar: yeni buton eklenmedi");
+  return injected;
+}
+
 function injectButtonIntoRoot(root: Element): void {
   if (root.querySelector(BUTTON_SELECTOR)) return;
 
-  const context = detectSourceContext();
+  // Birincil: Beğen + Yorum ikonlu yatay bar
+  if (injectIntoActionBar(root)) return;
 
-  // ── FEED: sol action group'un sonuna ─────────────────────────────────────
+  // Dikey bar (feed/dialog içindeki reel'ler)
+  if (injectIntoVerticalBar(root)) return;
+
+  // Eski fallback'ler (güvenlik için duruyor)
+  const context = detectSourceContext();
   if (context === "feed") {
     const actionSection = findActionSection(root);
     const leftGroup = actionSection?.querySelector(":scope > div");
@@ -252,8 +360,6 @@ function injectButtonIntoRoot(root: Element): void {
       return;
     }
   }
-
-  // ── POST MODAL / DETAIL: bookmark grubundan önce ─────────────────────────
   const bookmarkSvg = root.querySelector(SAVE_SEL);
   if (bookmarkSvg) {
     const rightGroup =
@@ -271,13 +377,6 @@ function injectButtonIntoRoot(root: Element): void {
       return;
     }
   }
-
-  // ── Reel dialog / dikey bar ──────────────────────────────────────────────
-  if (injectIntoVerticalBar(root)) return;
-
-  // ── Genel fallback ───────────────────────────────────────────────────────
-  const fallbackSection = root.querySelector("section") ?? root;
-  placeSectionButton((b) => fallbackSection.appendChild(b));
 }
 
 // ---------------------------------------------------------------------------
@@ -380,7 +479,11 @@ async function saveDirectToCollection(
 ): Promise<boolean> {
   if (!metadata.post_url) return false;
   try {
-    const response = (await sendMessage<{ success: boolean; error?: string; data?: { status?: string } | null }>({
+    const response = (await sendMessage<{
+      success: boolean;
+      error?: string;
+      data?: { status?: string } | null;
+    }>({
       type: "SAVE_POST",
       payload: {
         post_url: metadata.post_url,
@@ -428,8 +531,8 @@ async function openCollectionPickerFlow(
 ): Promise<void> {
   setOnSaveSuccessCallback(
     (collectionId: string, collectionName: string | null) => {
-      // isUpdate=true → one-time override via "Değiştir" toast.
-      // Only persist the default when this is the initial collection selection.
+      // isUpdate=true → "Değiştir" toast'ından tek seferlik override.
+      // Varsayılan yalnızca ilk koleksiyon seçiminde kalıcı yazılır.
       if (!isUpdate) {
         chrome.storage.local
           .set({
@@ -530,8 +633,7 @@ async function handleSaveClick(
     const ok = await saveDirectToCollection(postMeta, defaultCol, root);
     if (ok) setButtonState(btn, "saved");
     else {
-      // 200 from edge function = already exists (same canonical_url)
-      // saveDirectToCollection returns false on error; check toast context
+      // Edge function'dan 200 = zaten var (aynı canonical_url)
       setButtonState(btn, "duplicate");
     }
   } else {
@@ -564,23 +666,28 @@ function injectForReelsPage(): void {
   }
   if (!reelScope || reelScope === document.documentElement) return;
 
-  injectIntoVerticalBar(reelScope);
+  if (!injectIntoVerticalBar(reelScope)) {
+    dbg("injectForReelsPage: dikey bar yok, yatay bar deneniyor");
+    injectIntoActionBar(reelScope);
+  }
 }
 
 /** /p/ doğrudan sayfa (article/dialog bulunamadığında). */
 function injectForDirectPage(): void {
-  const main = document.querySelector("main") ?? document.body;
+  const main = document.body;
   if (main.querySelector(BUTTON_SELECTOR)) return;
 
-  const actionSection = findActionSection(main);
-  const leftGroup = actionSection?.querySelector(":scope > div");
-
-  if (leftGroup) {
-    placeSectionButton((b) => leftGroup.appendChild(b));
+  if (injectIntoActionBar(main)) {
     if (main.querySelector("video")) warmUpVideoThumbnail(main).catch(() => {});
     return;
   }
-  injectIntoVerticalBar(main);
+  if (injectIntoVerticalBar(main)) return;
+
+  const actionSection = findActionSection(main);
+  const leftGroup = actionSection?.querySelector(":scope > div");
+  if (leftGroup) {
+    placeSectionButton((b) => leftGroup.appendChild(b));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -591,6 +698,10 @@ export function injectButtonsInScope(
   scope: Element | Document = document,
 ): void {
   const context = detectSourceContext();
+
+  // 1) Roots/main'e bağımlı olmayan, doküman geneli yatay bar taraması.
+  //    Zaten butonu olan barlar atlanır, bu yüzden her çağrıda güvenle çalışır.
+  injectIntoActionBar(document.body);
 
   if (context === "reel-page") {
     injectForReelsPage();

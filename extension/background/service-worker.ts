@@ -573,62 +573,73 @@ export async function handleMessage(
 
   const { jwt } = session;
 
+  // Capture the result so we can check for server-side JWT rejection
+  // (e.g. account deleted) and auto-clear the stored session.
+  let result: BackgroundResponse<unknown>;
+
   switch (message.type) {
     case "GET_COLLECTIONS":
-      return callManageCollection({ operation: "list" }, jwt);
+      result = await callManageCollection({ operation: "list" }, jwt);
+      break;
 
     case "SAVE_POST":
-      return callSavePost(message.payload, jwt);
+      result = await callSavePost(message.payload, jwt);
+      break;
 
     case "CREATE_COLLECTION":
-      return callManageCollection(
+      result = await callManageCollection(
         { operation: "create", name: message.payload.name },
         jwt,
       );
+      break;
 
     case "RENAME_COLLECTION": {
       const { collection_id, name } = message.payload;
-      return callManageCollection(
+      result = await callManageCollection(
         { operation: "rename", collection_id, name },
         jwt,
       );
+      break;
     }
 
     case "DELETE_COLLECTION": {
       const { collection_id } = message.payload;
-      return callManageCollection({ operation: "delete", collection_id }, jwt);
+      result = await callManageCollection({ operation: "delete", collection_id }, jwt);
+      break;
     }
 
     case "UPDATE_POST_COLLECTION": {
       const { post_url, collection_id } = message.payload;
-      // The save-post Edge Function upserts on (user_id, post_url), so this
-      // targets the existing record and updates its collection_id
-      // (Requirement 11.5). The Edge Function validates only post_url and
-      // collection_id, so the remaining SavePostRequest fields are passed as
-      // empty strings to satisfy the TypeScript interface.
-      return callSavePost(
+      result = await callSavePost(
         { post_url, collection_id, post_type: "", platform: "" },
         jwt,
       );
+      break;
     }
 
     case "SET_DEFAULT_COLLECTION": {
       const { collection_id } = message.payload;
-      return callManageCollection({ operation: "set_default", collection_id }, jwt);
+      result = await callManageCollection({ operation: "set_default", collection_id }, jwt);
+      break;
     }
 
     default: {
-      // TypeScript exhaustiveness check — unreachable at runtime when all
-      // OutboundMessage variants are handled above.
       const _exhaustive: never = message;
       void _exhaustive;
-      return {
+      result = {
         success: false,
         error: "Unknown message type",
         code: "UNKNOWN_ERROR",
       };
     }
   }
+
+  // If the server rejected our JWT (account deleted, token revoked, etc.),
+  // clear the stored session so popup shows login on next open.
+  if (!result.success && (result as { code?: string }).code === "AUTH_REQUIRED") {
+    await clearSession();
+  }
+  return result;
 }
 
 // ── Message Listener Registration ─────────────────────────────────────────────

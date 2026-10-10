@@ -796,8 +796,11 @@ async function init(): Promise<void> {
     if (collectionsResp?.success && collectionsResp?.data) {
       const cols = extractCollections(collectionsResp.data);
       renderCollectionView(cols);
-      // Cache for next open
       chrome.storage.local.set({ [COLLECTIONS_CACHE_KEY]: cols }).catch(() => {});
+    } else if (collectionsResp && !collectionsResp.success && collectionsResp.code === "AUTH_REQUIRED") {
+      // Account deleted or JWT revoked — clear session and show login
+      await handleLogout();
+      return;
     }
   } catch (e) {
     console.warn("[Magpie] init: GET_COLLECTIONS failed (staying on collection view):", e);

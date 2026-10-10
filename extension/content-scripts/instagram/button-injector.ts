@@ -25,6 +25,7 @@ import { detectSourceContext } from "./route-listener";
 import type { PostMetadata } from "../../shared/types/domain";
 import { openModal, setOnSaveSuccessCallback } from "../modal";
 import { showToast } from "../toast";
+import { sendMessage } from "../../shared/sendMessage";
 
 // ---------------------------------------------------------------------------
 // Sabitler
@@ -379,7 +380,7 @@ async function saveDirectToCollection(
 ): Promise<boolean> {
   if (!metadata.post_url) return false;
   try {
-    const response = (await chrome.runtime.sendMessage({
+    const response = (await sendMessage<{ success: boolean; error?: string; data?: { status?: string } | null }>({
       type: "SAVE_POST",
       payload: {
         post_url: metadata.post_url,

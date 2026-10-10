@@ -17,6 +17,7 @@ import type { PostMetadata } from "../shared/types/domain";
 import { canonicalizeUrl } from "../shared/canonicalizeUrl";
 import { openModal } from "./modal";
 import { showToast } from "./toast";
+import { sendMessage } from "../shared/sendMessage";
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 
@@ -237,7 +238,7 @@ async function xSaveToDefault(
 ): Promise<boolean | "duplicate"> {
   if (!meta.post_url || !chrome.runtime?.id) return false;
   try {
-    const response = (await chrome.runtime.sendMessage({
+    const response = (await sendMessage<{ success: boolean; error?: string; data?: { status?: string } | null }>({
       type: "SAVE_POST",
       payload: {
         post_url: meta.post_url,
@@ -252,7 +253,7 @@ async function xSaveToDefault(
         post_timestamp: meta.post_timestamp ?? null,
         raw_metadata: meta.raw_metadata ?? null,
       },
-    })) as { success: boolean; error?: string; data?: { status?: string } | null };
+    }));
     if (!response?.success) return false;
     const data = response.data as { status?: string } | null;
     return data?.status === "updated" ? "duplicate" : true;

@@ -2,6 +2,8 @@
 import { ModalPortal } from "@/components/ModalPortal";
 
 import { useState, useTransition } from "react";
+import type { Collection } from "@/lib/types";
+import { movePost } from "@/app/actions";
 import type { FeedPost } from "@/lib/types";
 import { deletePost } from "@/app/actions";
 
@@ -167,6 +169,10 @@ interface PostCardProps {
    * wrapped in <mark> for highlighting.  Pass undefined when not searching.
    */
   searchQuery?: string;
+  /** List of user's own collections for the move-to-collection picker. */
+  ownedCollections?: Collection[];
+  /** Called after a successful collection move with the new collection info. */
+  onMovePost?: (postId: string, collectionId: string | null, collectionName: string | null) => void;
 }
 
 export default function PostCard({
@@ -177,6 +183,8 @@ export default function PostCard({
   currentUserId,
   isCollaborativeView = false,
   searchQuery,
+  ownedCollections,
+  onMovePost,
 }: PostCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -184,6 +192,8 @@ export default function PostCard({
   const [thumbError, setThumbError] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showCollectionPicker, setShowCollectionPicker] = useState(false);
+  const [movePending, startMoveTransition] = useTransition();
 
   const thumbnailUrl =
     thumbError ? null : safeUrl(post.thumbnail_url ?? post.media_urls?.[0] ?? null);
@@ -215,10 +225,21 @@ export default function PostCard({
     });
   };
 
+  const handleCollectionChange = (collectionId: string | null) => {
+    setShowCollectionPicker(false);
+    const col = collectionId ? ownedCollections?.find(c => c.id === collectionId) : null;
+    startMoveTransition(async () => {
+      const result = await movePost(post.id, collectionId);
+      if (result.ok) {
+        onMovePost?.(post.id, collectionId, col?.name ?? null);
+      }
+    });
+  };
+
   if (deleted) return null;
 
   return (
-    <>
+    <div className="relative">
       {showDeleteDialog && (
         <DeleteDialog
           onCancel={() => setShowDeleteDialog(false)}
@@ -411,7 +432,18 @@ export default function PostCard({
 
           {/* Footer */}
           <div className="flex items-center justify-between mt-auto pt-2 border-t border-gray-100 dark:border-gray-800">
-            {post.collections?.name ? (
+            {/* Collection badge — clickable when collections available */}
+            {!selectMode && ownedCollections && ownedCollections.length > 0 ? (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setShowCollectionPicker(v => !v); }}
+                disabled={movePending}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900 max-w-[140px] hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors disabled:opacity-50"
+              >
+                <span className="truncate">{post.collections?.name ?? "Koleksiyonsuz"}</span>
+                <svg className="w-2.5 h-2.5 shrink-0 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+            ) : post.collections?.name ? (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900 truncate max-w-[130px]">
                 {post.collections.name}
               </span>
@@ -446,6 +478,48 @@ export default function PostCard({
           </div>
         </div>
       </article>
-    </>
+
+      {/* Collection picker dropdown — outside article so overflow:hidden doesn't clip it */}
+      {showCollectionPicker && !selectMode && ownedCollections && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setShowCollectionPicker(false)}
+          />
+          <div className="absolute bottom-14 left-3 z-50 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl py-1 min-w-[160px]">
+            {ownedCollections.map(col => (
+              <button
+                key={col.id}
+                type="button"
+                onClick={() => handleCollectionChange(col.id)}
+                className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                {post.collection_id === col.id
+                  ? <svg className="w-3 h-3 shrink-0 text-indigo-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  : <span className="w-3 h-3 shrink-0" />
+                }
+                <span className={`truncate ${post.collection_id === col.id ? "font-semibold text-indigo-600 dark:text-indigo-400" : "text-gray-700 dark:text-gray-300"}`}>
+                  {col.name}{col.is_default ? " ★" : ""}
+                </span>
+              </button>
+            ))}
+            <div className="mx-3 my-0.5 border-t border-gray-100 dark:border-gray-700" />
+            <button
+              type="button"
+              onClick={() => handleCollectionChange(null)}
+              className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              {!post.collection_id
+                ? <svg className="w-3 h-3 shrink-0 text-indigo-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                : <span className="w-3 h-3 shrink-0" />
+              }
+              <span className={`${!post.collection_id ? "font-semibold text-indigo-600 dark:text-indigo-400" : "text-gray-500 dark:text-gray-400"}`}>
+                Koleksiyonsuz
+              </span>
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

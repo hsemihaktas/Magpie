@@ -6,7 +6,7 @@ export default async function LoginPage({ searchParams }: { searchParams: { erro
   const expired = searchParams.reason === "expired";
 
   return (
-    <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center px-4">
+    <div className="flex min-h-screen items-center justify-center px-4 bg-gray-50 dark:bg-gray-950">
       <div className="w-full max-w-sm space-y-8">
         {/* Brand */}
         <div className="text-center space-y-2">

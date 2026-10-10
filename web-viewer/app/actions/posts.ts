@@ -216,3 +216,38 @@ export async function deletePosts(postIds: string[]): Promise<ActionResult> {
     return fail(e instanceof Error ? e.message : "Toplu silme başarısız.");
   }
 }
+
+// ── movePost ──────────────────────────────────────────────────────────────────
+
+/**
+ * Moves a post to a different collection (or uncategorized if null).
+ * Only the post owner can move their own posts.
+ */
+export async function movePost(
+  postId: string,
+  collectionId: string | null,
+): Promise<ActionResult> {
+  const parsed = uuidSchema.safeParse(postId);
+  if (!parsed.success) return fail(parsed.error.errors[0].message);
+
+  if (collectionId !== null) {
+    const colParsed = uuidSchema.safeParse(collectionId);
+    if (!colParsed.success) return fail(colParsed.error.errors[0].message);
+  }
+
+  try {
+    const { supabase, session } = await requireAuth();
+
+    const { error } = await supabase
+      .from("saved_posts")
+      .update({ collection_id: collectionId })
+      .eq("id", postId)
+      .eq("user_id", session.user.id);
+
+    if (error) return fail(error.message);
+    revalidatePath("/feed");
+    return ok(undefined);
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Taşıma başarısız.");
+  }
+}

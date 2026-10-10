@@ -130,6 +130,7 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
           initialCursor={nextCursor}
           collectionId={collectionId}
           searchQuery={trimmedQ}
+          ownedCollections={(ownedCollections as Collection[]) ?? []}
         />
       </div>
     </div>

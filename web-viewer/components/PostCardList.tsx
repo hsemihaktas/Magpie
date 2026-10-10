@@ -1,4 +1,5 @@
 "use client";
+import { useRouter } from "next/navigation";
 import React, {
   useState,
   useRef,
@@ -133,6 +134,8 @@ interface PostCardListProps {
    * no cursor pagination) and PostCard highlights matching terms.
    */
   searchQuery?: string;
+  /** Owned collections passed through to each PostCard for the move-to-collection picker. */
+  ownedCollections?: import("@/lib/types").Collection[];
 }
 
 export default function PostCardList({
@@ -142,6 +145,7 @@ export default function PostCardList({
   initialCursor = null,
   collectionId,
   searchQuery,
+  ownedCollections,
 }: PostCardListProps) {
   // ── Post state ───────────────────────────────────────────────────────────────
   const [posts, setPosts] = useState(initialPosts);
@@ -151,6 +155,15 @@ export default function PostCardList({
   // Ref prevents duplicate in-flight requests when observer fires repeatedly.
   const loadingRef = useRef(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+
+  // Auto-refresh when switching back to this tab (e.g. after saving via extension)
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) router.refresh(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [router]);
+
 
   // ── Sync on URL navigation ───────────────────────────────────────────────────
   // When the server re-renders (collection / search param change), reset all
@@ -242,6 +255,25 @@ export default function PostCardList({
   };
 
   const allSelected = posts.length > 0 && selectedIds.size === posts.length;
+
+  // ── Move post handler ───────────────────────────────────────────────────────
+  const handleMovePost = (
+    postId: string,
+    collectionId: string | null,
+    collectionName: string | null,
+  ) => {
+    setPosts(prev =>
+      prev.map(p =>
+        p.id !== postId
+          ? p
+          : {
+              ...p,
+              collection_id: collectionId,
+              collections: collectionName ? { name: collectionName } : null,
+            }
+      )
+    );
+  };
 
   // ── Empty state ──────────────────────────────────────────────────────────────
   if (posts.length === 0 && !loading) {
@@ -355,6 +387,8 @@ export default function PostCardList({
               currentUserId={currentUserId}
               isCollaborativeView={isCollaborativeView}
               searchQuery={searchQuery}
+              ownedCollections={ownedCollections}
+              onMovePost={handleMovePost}
             />
           </li>
         ))}

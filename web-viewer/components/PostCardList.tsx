@@ -1,11 +1,12 @@
 "use client";
-import { useRouter } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import React, {
   useState,
   useRef,
   useCallback,
   useEffect,
   useTransition,
+  useMemo,
 } from "react";
 import { ModalPortal } from "@/components/ModalPortal";
 import type { FeedPost, PostCursor } from "@/lib/types";
@@ -60,6 +61,51 @@ function LoadingSpinner() {
   );
 }
 
+// Platform Filter Component (inline for client-side filtering)
+function PlatformTabs({
+  activePlatform,
+  counts,
+  onPlatformChange,
+  rightContent,
+}: {
+  activePlatform?: string;
+  counts: { all: number; instagram: number; x: number; threads: number };
+  onPlatformChange: (platform: string | null) => void;
+  rightContent?: React.ReactNode;
+}) {
+  const PLATFORMS = [
+    { id: null, label: "TÜMÜ", count: counts.all },
+    { id: "instagram", label: "INSTAGRAM", count: counts.instagram },
+    { id: "x", label: "X", count: counts.x },
+  ] as const;
+
+  return (
+    <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800">
+      <div className="flex items-center gap-0">
+        {PLATFORMS.map((platform) => {
+          const isActive =
+            platform.id === activePlatform || (!platform.id && !activePlatform);
+          return (
+            <button
+              key={platform.id ?? "all"}
+              onClick={() => onPlatformChange(platform.id)}
+              className={`platform-tab ${isActive ? "platform-tab-active" : ""}`}
+            >
+              {platform.label}
+              <span
+                className={`ml-1.5 ${isActive ? "text-zinc-600 dark:text-zinc-400" : "text-zinc-400 dark:text-zinc-600"}`}
+              >
+                ({platform.count})
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {rightContent && <div className="flex items-center">{rightContent}</div>}
+    </div>
+  );
+}
+
 interface PostCardListProps {
   posts: FeedPost[];
   currentUserId?: string;
@@ -72,6 +118,12 @@ interface PostCardListProps {
   allTags?: import("@/lib/types").Tag[];
   activeTagId?: string;
   activePlatform?: "instagram" | "x" | "threads";
+  platformCounts?: {
+    all: number;
+    instagram: number;
+    x: number;
+    threads: number;
+  };
 }
 
 export default function PostCardList({
@@ -84,9 +136,10 @@ export default function PostCardList({
   searchQuery,
   ownedCollections,
   allTags = [],
-  activePlatform,
+  activePlatform: serverActivePlatform,
+  platformCounts,
 }: PostCardListProps) {
-  const [posts, setPosts] = useState(initialPosts);
+  const [allPosts, setAllPosts] = useState(initialPosts);
   const [cursor, setCursor] = useState<PostCursor | null>(
     initialCursor ?? null,
   );
@@ -94,24 +147,69 @@ export default function PostCardList({
   const [loading, setLoading] = useState(false);
   const loadingRef = useRef(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
-  useEffect(() => {
-    const onVisibility = () => {
-      if (!document.hidden) router.refresh();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [router]);
+  // Client-side platform filter state
+  const [clientPlatform, setClientPlatform] = useState<string | undefined>(
+    serverActivePlatform,
+  );
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // Note: Removed visibilitychange refresh - it was causing unnecessary reloads
+  // when switching tabs. Data is already fresh from initial load.
 
   const postsKey = JSON.stringify(initialPosts.map((p) => p.id));
   useEffect(() => {
-    setPosts(initialPosts);
+    setAllPosts(initialPosts);
     setCursor(initialCursor ?? null);
     setHasMore(initialCursor !== null);
     loadingRef.current = false;
     setLoading(false);
-  }, [postsKey, initialCursor, initialPosts]);
+    setClientPlatform(serverActivePlatform);
+  }, [postsKey, initialCursor, initialPosts, serverActivePlatform]);
+
+  // Filter posts client-side
+  const posts = useMemo(() => {
+    if (!clientPlatform) return allPosts;
+    return allPosts.filter((p) => p.platform === clientPlatform);
+  }, [allPosts, clientPlatform]);
+
+  // Calculate counts from all posts
+  const counts = useMemo(() => {
+    if (platformCounts) return platformCounts;
+    return {
+      all: allPosts.length,
+      instagram: allPosts.filter((p) => p.platform === "instagram").length,
+      x: allPosts.filter((p) => p.platform === "x").length,
+      threads: allPosts.filter((p) => p.platform === "threads").length,
+    };
+  }, [allPosts, platformCounts]);
+
+  // Handle platform change with smooth transition
+  const handlePlatformChange = useCallback(
+    (platform: string | null) => {
+      setIsTransitioning(true);
+
+      // Update URL without navigation (shallow)
+      const params = new URLSearchParams(searchParams.toString());
+      if (platform) params.set("platform", platform);
+      else params.delete("platform");
+
+      window.history.replaceState(
+        null,
+        "",
+        params.toString() ? `${pathname}?${params}` : pathname,
+      );
+
+      // Smooth transition
+      setTimeout(() => {
+        setClientPlatform(platform || undefined);
+        setIsTransitioning(false);
+      }, 150);
+    },
+    [pathname, searchParams],
+  );
 
   const loadMore = useCallback(async () => {
     if (loadingRef.current || !cursor) return;
@@ -121,17 +219,17 @@ export default function PostCardList({
       const result = await getPosts({
         cursor,
         collectionId,
-        platform: activePlatform,
+        platform: clientPlatform as "instagram" | "x" | "threads" | undefined,
       });
       if (!result.ok) return;
-      setPosts((prev) => [...prev, ...result.data.posts]);
+      setAllPosts((prev) => [...prev, ...result.data.posts]);
       setCursor(result.data.nextCursor);
       setHasMore(result.data.nextCursor !== null);
     } finally {
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [cursor, collectionId, activePlatform]);
+  }, [cursor, collectionId, clientPlatform]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -177,7 +275,7 @@ export default function PostCardList({
       const result = await deletePosts(ids);
       if (result.ok) {
         const deleted = new Set(ids);
-        setPosts((prev) => prev.filter((p) => !deleted.has(p.id)));
+        setAllPosts((prev) => prev.filter((p) => !deleted.has(p.id)));
         setSelectedIds(new Set());
         setSelectMode(false);
       }
@@ -189,7 +287,7 @@ export default function PostCardList({
     collectionId: string | null,
     collectionName: string | null,
   ) => {
-    setPosts((prev) =>
+    setAllPosts((prev) =>
       prev.map((p) =>
         p.id !== postId
           ? p
@@ -206,81 +304,100 @@ export default function PostCardList({
     postId: string,
     tags: import("@/lib/types").Tag[],
   ) => {
-    setPosts((prev) => prev.map((p) => (p.id !== postId ? p : { ...p, tags })));
-  };
-
-  if (posts.length === 0 && !loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 text-center border border-dashed border-zinc-200 dark:border-zinc-800">
-        <div className="mono text-zinc-400 mb-2">POST YOK</div>
-        <p className="text-xs text-zinc-500">
-          Instagram veya X&apos;ten gönderi kaydedin.
-        </p>
-      </div>
+    setAllPosts((prev) =>
+      prev.map((p) => (p.id !== postId ? p : { ...p, tags })),
     );
-  }
+  };
 
   const allSelected = posts.length > 0 && selectedIds.size === posts.length;
 
+  // Toolbar content for PlatformFilter's right side
+  const toolbarContent = selectMode ? (
+    <div className="flex items-center gap-4">
+      <button
+        onClick={toggleSelectAll}
+        className="mono text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+      >
+        {allSelected ? "SEÇİMİ KALDIR" : "TÜMÜNÜ SEÇ"}
+      </button>
+      {selectedIds.size > 0 && (
+        <span className="mono text-zinc-400">{selectedIds.size} seçili</span>
+      )}
+      <button
+        onClick={exitSelectMode}
+        className="mono text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1.5"
+      >
+        <svg
+          className="w-3.5 h-3.5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        >
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+        İPTAL
+      </button>
+    </div>
+  ) : posts.length > 0 ? (
+    <button
+      onClick={() => setSelectMode(true)}
+      className="mono text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1.5 transition-colors"
+    >
+      <svg
+        className="w-3.5 h-3.5"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      >
+        <rect x="3" y="3" width="7" height="7" />
+        <rect x="14" y="3" width="7" height="7" />
+        <rect x="3" y="14" width="7" height="7" />
+        <rect x="14" y="14" width="7" height="7" />
+      </svg>
+      SEÇ
+    </button>
+  ) : null;
+
+  // Empty state
+  if (posts.length === 0 && !loading) {
+    return (
+      <>
+        {/* Platform Filter - always visible */}
+        <PlatformTabs
+          activePlatform={clientPlatform}
+          counts={counts}
+          onPlatformChange={handlePlatformChange}
+          rightContent={toolbarContent}
+        />
+
+        <div
+          className={`flex flex-col items-center justify-center py-24 text-center border border-dashed border-zinc-200 dark:border-zinc-800 transition-opacity duration-200 ${isTransitioning ? "opacity-50" : ""}`}
+        >
+          <div className="mono text-zinc-400 mb-2">POST YOK</div>
+          <p className="text-xs text-zinc-500">
+            Instagram veya X&apos;ten gönderi kaydedin.
+          </p>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
-      {/* Toolbar */}
-      <div className="flex items-center justify-end min-h-[32px] -mt-2">
-        {selectMode ? (
-          <div className="flex items-center gap-4">
-            <button
-              onClick={toggleSelectAll}
-              className="mono text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-            >
-              {allSelected ? "SEÇİMİ KALDIR" : "TÜMÜNÜ SEÇ"}
-            </button>
-            {selectedIds.size > 0 && (
-              <span className="mono text-zinc-400">
-                {selectedIds.size} seçili
-              </span>
-            )}
-            <button
-              onClick={exitSelectMode}
-              className="mono text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1.5"
-            >
-              <svg
-                className="w-3.5 h-3.5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-              İPTAL
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setSelectMode(true)}
-            className="mono text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1.5 transition-colors"
-          >
-            <svg
-              className="w-3.5 h-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <rect x="3" y="3" width="7" height="7" />
-              <rect x="14" y="3" width="7" height="7" />
-              <rect x="3" y="14" width="7" height="7" />
-              <rect x="14" y="14" width="7" height="7" />
-            </svg>
-            SEÇ
-          </button>
-        )}
-      </div>
+      {/* Platform Filter with Toolbar */}
+      <PlatformTabs
+        activePlatform={clientPlatform}
+        counts={counts}
+        onPlatformChange={handlePlatformChange}
+        rightContent={toolbarContent}
+      />
 
       {/* Grid */}
       <ul
-        className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 ${isPending ? "opacity-60 pointer-events-none" : ""}`}
+        className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 transition-opacity duration-200 ${isTransitioning || isPending ? "opacity-50 pointer-events-none" : ""}`}
       >
         {posts.map((post) => (
           <li key={post.id}>

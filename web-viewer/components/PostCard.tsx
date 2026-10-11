@@ -191,9 +191,9 @@ function CommentSection({ postId, currentUserEmail }: CommentSectionProps) {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Comments list - scrollable */}
-      <div className="flex-1 overflow-y-auto space-y-3 mb-4 max-h-[250px] scrollbar-thin">
+    <div className="flex flex-col h-full min-h-[300px]">
+      {/* Comments list - scrollable, takes remaining space */}
+      <div className="flex-1 overflow-y-auto space-y-3 scrollbar-thin">
         {comments.length === 0 ? (
           <p className="mono text-zinc-400 text-center py-4">Henüz yorum yok</p>
         ) : (
@@ -270,8 +270,8 @@ function CommentSection({ postId, currentUserEmail }: CommentSectionProps) {
         <div ref={commentsEndRef} />
       </div>
 
-      {/* Input area - fixed at bottom */}
-      <div className="border-t border-zinc-200 dark:border-zinc-800 pt-3 space-y-2">
+      {/* Input area - always at bottom */}
+      <div className="border-t border-zinc-200 dark:border-zinc-800 pt-3 mt-3 space-y-2 shrink-0">
         <textarea
           value={value}
           onChange={(e) => setValue(e.target.value)}
@@ -636,7 +636,9 @@ function PostDetailModal({
             )}
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4 scrollbar-thin">
+            <div
+              className={`flex-1 overflow-y-auto p-4 scrollbar-thin ${activeTab === "comments" ? "flex flex-col" : ""}`}
+            >
               {activeTab === "content" && (
                 <div className="space-y-4">
                   {contentText ? (
@@ -857,7 +859,7 @@ export default function PostCard({
         {/* Select checkbox */}
         {selectMode && (
           <div
-            className={`absolute top-2 left-2 z-10 w-5 h-5 border flex items-center justify-center transition-all ${
+            className={`absolute top-2 right-2 z-10 w-5 h-5 border flex items-center justify-center transition-all ${
               isSelected
                 ? "bg-zinc-900 dark:bg-zinc-100 border-zinc-900 dark:border-zinc-100"
                 : "bg-white dark:bg-zinc-900 border-zinc-300 dark:border-zinc-700"
@@ -940,18 +942,10 @@ export default function PostCard({
         </div>
 
         {/* Content */}
-        <div className="p-3 flex flex-col h-[130px]">
-          {/* Author + Date */}
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <p className="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate flex-1">
-              @{displayName || "bilinmeyen"}
-            </p>
-            <span className="mono text-zinc-400 shrink-0">{date}</span>
-          </div>
-
+        <div className="p-3 flex flex-col h-[150px]">
           {/* Tags */}
           {localTags.length > 0 && (
-            <div className="flex flex-wrap gap-x-2 gap-y-1 mb-2">
+            <div className="flex flex-wrap gap-x-2 gap-y-1 mb-1">
               {localTags.slice(0, 3).map((tag) => (
                 <span key={tag.id} className="mono text-zinc-400">
                   #{tag.name}
@@ -968,8 +962,16 @@ export default function PostCard({
           {/* Divider */}
           <div className="border-t border-zinc-100 dark:border-zinc-800 my-1" />
 
+          {/* Author + Date */}
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <p className="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate flex-1">
+              @{displayName || "bilinmeyen"}
+            </p>
+            <span className="mono text-zinc-400 shrink-0">{date}</span>
+          </div>
+
           {/* Caption */}
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 line-clamp-2 flex-1">
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 line-clamp-3 flex-1">
             {contentText || <span className="italic">İçerik yok</span>}
           </p>
 
@@ -985,9 +987,20 @@ export default function PostCard({
                   setShowCollectionPicker((v) => !v);
                 }}
                 disabled={movePending}
-                className="mono text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 truncate max-w-[120px]"
+                className="mono text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 truncate max-w-[120px] flex items-center gap-1"
               >
-                {post.collections?.name ?? "—"}
+                <span className="truncate">
+                  {post.collections?.name ?? "—"}
+                </span>
+                <svg
+                  className={`w-3 h-3 shrink-0 transition-transform ${showCollectionPicker ? "rotate-180" : ""}`}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
               </button>
             ) : post.collections?.name ? (
               <span className="mono text-zinc-400 truncate max-w-[120px]">

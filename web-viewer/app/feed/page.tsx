@@ -2,7 +2,6 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase";
 import CollectionFilter from "@/components/CollectionFilter";
-import PlatformFilter from "@/components/PlatformFilter";
 import PostCardList from "@/components/PostCardList";
 import type {
   Collection,
@@ -33,10 +32,13 @@ const FEED_SELECT =
 
 export default async function FeedPage({ searchParams }: FeedPageProps) {
   const supabase = createServerClient();
+
+  // Use getUser() instead of getSession() - it validates JWT with Supabase
+  // and won't return stale data after logout
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) redirect("/login");
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
   const collectionId = searchParams.collection;
   const trimmedQ = searchParams.q?.trim();
@@ -119,15 +121,15 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
     supabase
       .from("collections")
       .select("id, name, is_default")
-      .eq("user_id", session.user.id)
+      .eq("user_id", user.id)
       .order("created_at", { ascending: true }),
     supabase.rpc("get_shared_collections_with_owner", {
-      p_user_id: session.user.id,
+      p_user_id: user.id,
     }),
     supabase
       .from("tags")
       .select("id, user_id, name, created_at")
-      .eq("user_id", session.user.id)
+      .eq("user_id", user.id)
       .order("name", { ascending: true }),
   ]);
 
@@ -231,16 +233,11 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
 
       {/* Main */}
       <div className="flex-1 min-w-0 flex flex-col gap-4">
-        {/* Platform Filter */}
-        <PlatformFilter
-          activePlatform={platformFilter}
-          counts={platformCounts}
-        />
-
+        {/* Platform Filter + Select Toolbar wrapper */}
         <PostCardList
           posts={posts}
-          currentUserId={session.user.id}
-          currentUserEmail={session.user.email ?? ""}
+          currentUserId={user.id}
+          currentUserEmail={user.email ?? ""}
           isCollaborativeView={isCollaborativeView}
           initialCursor={nextCursor}
           collectionId={collectionId}
@@ -249,6 +246,7 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
           allTags={(tagsData as Tag[]) ?? []}
           activeTagId={tagId}
           activePlatform={platformFilter}
+          platformCounts={platformCounts}
         />
       </div>
     </div>

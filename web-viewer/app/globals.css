@@ -5,7 +5,7 @@
 /* Ultra-minimalist archive design system */
 @layer base {
   :root {
-    --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", Consolas, monospace;
+    /* Font variable is set by next/font in layout.tsx */
   }
 
   html {
@@ -130,5 +130,10 @@
   /* 1px border helpers */
   .border-1 {
     border-width: 1px;
+  }
+
+  /* Smooth grid animations */
+  .grid-animate {
+    @apply transition-all duration-300 ease-out;
   }
 }

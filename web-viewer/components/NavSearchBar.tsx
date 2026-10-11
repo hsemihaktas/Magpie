@@ -36,7 +36,7 @@ export default function NavSearchBar() {
   if (pathname !== "/feed") return null;
 
   return (
-    <div className="relative flex-1 max-w-md">
+    <div className="relative w-full max-w-md">
       {/* Search icon */}
       <svg
         className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none"

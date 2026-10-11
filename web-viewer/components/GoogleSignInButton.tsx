@@ -1,11 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase.browser";
 
 export default function GoogleSignInButton() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const searchParams = useSearchParams();
+
+  // Store the 'next' param in localStorage so callback can use it
+  useEffect(() => {
+    const next = searchParams.get("next");
+    if (next) {
+      try {
+        localStorage.setItem("auth_redirect_next", next);
+      } catch {
+        // localStorage might not be available
+      }
+    }
+  }, [searchParams]);
 
   async function handleSignIn() {
     setError(null);

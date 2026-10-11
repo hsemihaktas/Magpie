@@ -152,6 +152,13 @@ if (isWatch) {
     ["popup/popup.html", "dist/popup/popup.html"],
     ["popup/popup.css", "dist/popup/popup.css"],
     ["styles/toast.css", "dist/styles/toast.css"],
+    ["icons/icon16.png", "dist/icons/icon16.png"],
+    ["icons/icon32.png", "dist/icons/icon32.png"],
+    ["icons/icon48.png", "dist/icons/icon48.png"],
+    ["icons/icon128.png", "dist/icons/icon128.png"],
+    ["popup-icons/icon32.png", "dist/popup-icons/icon32.png"],
+    ["popup-icons/icon48.png", "dist/popup-icons/icon48.png"],
+    ["popup-icons/icon128.png", "dist/popup-icons/icon128.png"],
   ];
   for (const [src, dest] of staticFiles) {
     mkdirSync(dest.split("/").slice(0, -1).join("/"), { recursive: true });

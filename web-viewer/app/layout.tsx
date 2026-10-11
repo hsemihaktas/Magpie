@@ -1,12 +1,20 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import { Suspense } from "react";
+import { JetBrains_Mono } from "next/font/google";
 import { HeaderWrapper } from "@/components/HeaderWrapper";
 import { UserEmail } from "@/components/UserEmail";
 import { SettingsButton } from "@/components/SettingsButton";
 import NavSearchBar from "@/components/NavSearchBar";
 import { createServerClient } from "@/lib/supabase";
 import "./globals.css";
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Magpie Archive",
@@ -32,17 +40,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={jetbrainsMono.variable} suppressHydrationWarning>
       <head>
-        <link
-          rel="preconnect"
-          href="https://fonts.googleapis.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap"
-          rel="stylesheet"
-        />
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -60,9 +59,9 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <HeaderWrapper>
-          <header className="sticky top-0 z-40 h-12 flex items-center gap-6 px-6 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
-            {/* Logo */}
-            <div className="flex items-center gap-3 shrink-0">
+          <header className="sticky top-0 z-40 h-12 flex items-center px-6 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
+            {/* Left side - Logo */}
+            <div className="flex items-center gap-3 shrink-0 w-48">
               <Image
                 src="/logo-96.png"
                 alt="Magpie"
@@ -76,17 +75,21 @@ export default function RootLayout({
               </span>
             </div>
 
-            {/* Search bar - center */}
-            <Suspense fallback={null}>
-              <NavSearchBar />
-            </Suspense>
+            {/* Center - Search bar (only on /feed) */}
+            <div className="flex-1 flex justify-center px-8">
+              <Suspense fallback={null}>
+                <NavSearchBar />
+              </Suspense>
+            </div>
 
-            {/* Right side */}
-            <div className="flex items-center gap-2 shrink-0 ml-auto">
-              <Suspense fallback={<div className="w-8 h-8" />}>
+            {/* Right side - auth-dependent components */}
+            <div className="flex items-center gap-2 shrink-0 w-48 justify-end">
+              <Suspense fallback={null}>
                 <SettingsButtonWithEmail />
               </Suspense>
-              <UserEmail />
+              <Suspense fallback={null}>
+                <UserEmail />
+              </Suspense>
             </div>
           </header>
         </HeaderWrapper>

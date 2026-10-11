@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { Suspense } from "react";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
 
 export default async function LoginPage({
@@ -52,7 +53,9 @@ export default async function LoginPage({
 
         {/* Sign-in */}
         <div className="flex justify-center">
-          <GoogleSignInButton />
+          <Suspense fallback={<div className="h-12" />}>
+            <GoogleSignInButton />
+          </Suspense>
         </div>
 
         <p className="text-center mono text-zinc-400">

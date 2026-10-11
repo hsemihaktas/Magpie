@@ -23,8 +23,6 @@ function extractCollections(data: unknown): Collection[] {
   return [];
 }
 
-
-
 // Build-time injected by esbuild from .env
 /** chrome.storage.local key for cached collections */
 const COLLECTIONS_CACHE_KEY = "magpie_collections_cache";
@@ -40,7 +38,9 @@ async function toggleTheme(): Promise<void> {
   const isDark = document.documentElement.classList.contains("dark");
   const next = !isDark;
   applyTheme(next);
-  chrome.storage.local.set({ [THEME_CACHE_KEY]: next ? "dark" : "light" }).catch(() => {});
+  chrome.storage.local
+    .set({ [THEME_CACHE_KEY]: next ? "dark" : "light" })
+    .catch(() => {});
 }
 
 function moonIconSvg(): string {
@@ -51,7 +51,8 @@ function sunIconSvg(): string {
   return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`;
 }
 
-const WEB_VIEWER_URL: string = process.env.WEB_VIEWER_URL ?? "http://localhost:3001";
+const WEB_VIEWER_URL: string =
+  process.env.WEB_VIEWER_URL ?? "http://localhost:3001";
 
 // ── Module state ──────────────────────────────────────────────────────────────
 
@@ -131,19 +132,18 @@ function renderLoginView(errorMsg?: string): void {
         ${isDark ? sunIconSvg() : moonIconSvg()}
       </button>
       <div class="login-header">
-        <div class="login-logo" aria-hidden="true">
-          <img src="../../icons/icon128.png" alt="Magpie" width="72" height="72"
-               style="border-radius:18px;display:block;" />
+        <div class="login-logo">
+          <img src="../popup-icons/icon128.png" alt="Magpie" width="48" height="48" />
         </div>
-        <h1 class="login-title">Magpie</h1>
-        <p class="login-subtitle">Save posts from Instagram and X to your private archive</p>
+        <h1 class="login-title">Magpie Archive</h1>
+        <p class="login-subtitle">Instagram ve X'ten gönderileri özel arşivine kaydet</p>
       </div>
 
       ${errorMsg ? `<div class="error-message" role="alert">${escapeHtml(errorMsg)}</div>` : ""}
 
       <button id="login-btn" class="btn btn--google" type="button">
         <svg class="btn__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
-             width="18" height="18" aria-hidden="true">
+             width="16" height="16" aria-hidden="true">
           <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26
             1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
           <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23
@@ -153,7 +153,7 @@ function renderLoginView(errorMsg?: string): void {
           <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1
             12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
         </svg>
-        Continue with Google
+        Google ile Giriş Yap
       </button>
     </div>
   `;
@@ -178,9 +178,9 @@ function collectionItemViewHtml(c: Collection): string {
     <span class="collection-name">${safeName}</span>
     <div class="collection-actions">
       <button class="btn btn--text btn--small" data-action="rename" type="button"
-              aria-label="Rename ${safeName}">Rename</button>
+              aria-label="Yeniden adlandır ${safeName}">Düzenle</button>
       <button class="btn btn--text btn--small btn--danger" data-action="delete" type="button"
-              aria-label="Delete ${safeName}">Delete</button>
+              aria-label="Sil ${safeName}">Sil</button>
     </div>
   `;
 }
@@ -198,12 +198,12 @@ function renameFormInnerHtml(currentValue: string, errorMsg?: string): string {
   return `
     <div class="rename-form">
       <input class="input" type="text" value="${escapeHtml(currentValue)}"
-             maxlength="100" aria-label="New collection name" />
+             maxlength="100" aria-label="Yeni koleksiyon adı" />
       <div class="collection-actions">
         <button class="btn btn--primary btn--small" data-action="rename-save"
-                type="button">Save</button>
+                type="button">Kaydet</button>
         <button class="btn btn--text btn--small" data-action="rename-cancel"
-                type="button">Cancel</button>
+                type="button">İptal</button>
       </div>
     </div>
     ${errorMsg ? `<p class="error-inline" role="alert">${escapeHtml(errorMsg)}</p>` : ""}
@@ -223,7 +223,7 @@ function addSectionHtml(
     return `
       <div id="add-collection-section">
         <button class="btn btn--text btn--small collection-add-toggle"
-                data-action="add-toggle" type="button">+ Add new collection</button>
+                data-action="add-toggle" type="button">+ Yeni koleksiyon</button>
       </div>
     `;
   }
@@ -232,13 +232,13 @@ function addSectionHtml(
       ${errorMsg ? `<p class="error-inline" role="alert">${escapeHtml(errorMsg)}</p>` : ""}
       <div class="rename-form">
         <input class="input" id="add-collection-input" type="text"
-               value="${escapeHtml(inputValue)}" placeholder="Collection name"
-               maxlength="100" aria-label="New collection name" />
+               value="${escapeHtml(inputValue)}" placeholder="Koleksiyon adı"
+               maxlength="100" aria-label="Yeni koleksiyon adı" />
         <div class="collection-actions">
           <button class="btn btn--primary btn--small" data-action="add-save"
-                  type="button">Add</button>
+                  type="button">Ekle</button>
           <button class="btn btn--text btn--small" data-action="add-cancel"
-                  type="button">Cancel</button>
+                  type="button">İptal</button>
         </div>
       </div>
     </div>
@@ -280,30 +280,43 @@ function showCollectionViewError(msg: string): void {
  *
  * Requirements: 13.1, 13.2, 13.3, 13.9
  */
-export function renderCollectionView(cols: Collection[] | unknown = [], showSpinner = false): void {
+export function renderCollectionView(
+  cols: Collection[] | unknown = [],
+  showSpinner = false,
+): void {
   // Defensive: handle non-array input gracefully
-  const safeArray: Collection[] = Array.isArray(cols) ? (cols as Collection[]) : [];
-  console.log("[Magpie] renderCollectionView called with", safeArray.length, "items");
+  const safeArray: Collection[] = Array.isArray(cols)
+    ? (cols as Collection[])
+    : [];
+  console.log(
+    "[Magpie] renderCollectionView called with",
+    safeArray.length,
+    "items",
+  );
   collections = [...safeArray];
 
   const isDark = document.documentElement.classList.contains("dark");
-  const listItemsHtml =
-    showSpinner
-      ? '<div class="collections-loading"><div class="loading-spinner" aria-label="Yükleniyor…" role="status"></div></div>'
-      : safeArray.length === 0
-        ? '<p class="empty-message">No collections yet</p>'
-        : safeArray.map(collectionItemHtml).join("");
+  const listItemsHtml = showSpinner
+    ? '<div class="collections-loading"><div class="loading-spinner" aria-label="Yükleniyor…" role="status"></div></div>'
+    : safeArray.length === 0
+      ? '<p class="empty-message">Koleksiyon yok</p>'
+      : safeArray.map(collectionItemHtml).join("");
 
   getApp().innerHTML = `
     <div class="collections-container">
       <div class="collections-header">
-        <h1 class="collections-title">My Collections</h1>
+        <div class="collections-header-left">
+          <div class="header-logo">
+            <img src="../popup-icons/icon32.png" alt="" width="20" height="20" />
+          </div>
+          <h1 class="collections-title">Magpie</h1>
+        </div>
         <div class="header-actions">
           <button id="theme-btn" class="btn btn--icon" type="button" title="Temayı değiştir">
             ${isDark ? sunIconSvg() : moonIconSvg()}
           </button>
           <button id="logout-btn" class="btn btn--logout" type="button" title="Çıkış yap">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           </button>
         </div>
       </div>
@@ -313,9 +326,9 @@ export function renderCollectionView(cols: Collection[] | unknown = [], showSpin
       </div>
       <div class="collections-footer">
         <button id="open-web-btn" class="web-archive-btn" type="button">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           <span>Web Arşivini Aç</span>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="arrow" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="arrow" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </button>
       </div>
     </div>
@@ -508,21 +521,34 @@ async function handleCreateCollection(name: string): Promise<void> {
         renderCollectionView(collections);
         return;
       }
-      replaceAddSection(addSectionHtml(true, name, retry?.error ?? "Failed to create collection. Please try again."));
+      replaceAddSection(
+        addSectionHtml(
+          true,
+          name,
+          retry?.error ?? "Failed to create collection. Please try again.",
+        ),
+      );
       return;
     }
 
     if (response.success) {
       // response.data is ManageCollectionResponse: { operation: "create", collection: Collection }
       // Extract the nested Collection object
-      const responseData = response.data as unknown as { collection?: Collection };
-      const newCollection: Collection = responseData?.collection ?? (response.data as unknown as Collection);
+      const responseData = response.data as unknown as {
+        collection?: Collection;
+      };
+      const newCollection: Collection =
+        responseData?.collection ?? (response.data as unknown as Collection);
       if (newCollection?.id && newCollection?.name) {
         collections = [...collections, newCollection];
       }
       renderCollectionView(collections);
     } else {
-      console.warn("[Magpie] CREATE_COLLECTION error:", response.error, response.code);
+      console.warn(
+        "[Magpie] CREATE_COLLECTION error:",
+        response.error,
+        response.code,
+      );
       replaceAddSection(addSectionHtml(true, name, response.error));
     }
   } catch (err) {
@@ -696,13 +722,18 @@ async function handleLogin(): Promise<void> {
       // Auth completed — immediately show collection view, then load collections
       renderCollectionView([]);
       // Load collections in the background; failure here should NOT reset to login
-      chrome.runtime.sendMessage<OutboundMessage, BackgroundResponse<Collection[]>>(
-        { type: "GET_COLLECTIONS" }
-      ).then((collectionsResp) => {
-        if (collectionsResp?.success && collectionsResp.data) {
-          renderCollectionView(extractCollections(collectionsResp.data));
-        }
-      }).catch(() => { /* keep collection view even if fetch fails */ });
+      chrome.runtime
+        .sendMessage<OutboundMessage, BackgroundResponse<Collection[]>>({
+          type: "GET_COLLECTIONS",
+        })
+        .then((collectionsResp) => {
+          if (collectionsResp?.success && collectionsResp.data) {
+            renderCollectionView(extractCollections(collectionsResp.data));
+          }
+        })
+        .catch(() => {
+          /* keep collection view even if fetch fails */
+        });
     } else {
       // Distinguish between hard auth errors and user-driven cancellation
       if (
@@ -757,7 +788,12 @@ async function init(): Promise<void> {
 
     const sessionData = sessionResp?.success ? sessionResp.data : undefined;
     hasSession = !!sessionData;
-    console.log("[Magpie] init: hasSession =", hasSession, sessionResp?.success, !!sessionData);
+    console.log(
+      "[Magpie] init: hasSession =",
+      hasSession,
+      sessionResp?.success,
+      !!sessionData,
+    );
   } catch (e) {
     console.error("[Magpie] init: GET_SESSION_STATUS failed:", e);
     renderLoginView();
@@ -774,12 +810,15 @@ async function init(): Promise<void> {
     const themeStore = await chrome.storage.local.get(THEME_CACHE_KEY);
     const savedTheme = themeStore[THEME_CACHE_KEY] as string | undefined;
     applyTheme(savedTheme === "dark");
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   // Step 3: Show cached collections immediately (zero-wait UX)
   try {
     const cached = await chrome.storage.local.get(COLLECTIONS_CACHE_KEY);
-    const cachedCols = (cached[COLLECTIONS_CACHE_KEY] as Collection[] | undefined) ?? [];
+    const cachedCols =
+      (cached[COLLECTIONS_CACHE_KEY] as Collection[] | undefined) ?? [];
     // Show spinner only if cache is empty (first ever open or cleared cache)
     renderCollectionView(cachedCols, cachedCols.length === 0);
   } catch {
@@ -796,14 +835,23 @@ async function init(): Promise<void> {
     if (collectionsResp?.success && collectionsResp?.data) {
       const cols = extractCollections(collectionsResp.data);
       renderCollectionView(cols);
-      chrome.storage.local.set({ [COLLECTIONS_CACHE_KEY]: cols }).catch(() => {});
-    } else if (collectionsResp && !collectionsResp.success && collectionsResp.code === "AUTH_REQUIRED") {
+      chrome.storage.local
+        .set({ [COLLECTIONS_CACHE_KEY]: cols })
+        .catch(() => {});
+    } else if (
+      collectionsResp &&
+      !collectionsResp.success &&
+      collectionsResp.code === "AUTH_REQUIRED"
+    ) {
       // Account deleted or JWT revoked — clear session and show login
       await handleLogout();
       return;
     }
   } catch (e) {
-    console.warn("[Magpie] init: GET_COLLECTIONS failed (staying on collection view):", e);
+    console.warn(
+      "[Magpie] init: GET_COLLECTIONS failed (staying on collection view):",
+      e,
+    );
   }
 }
 

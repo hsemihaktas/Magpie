@@ -7,7 +7,19 @@ const config: Config = {
     "./lib/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   darkMode: "class",
-  theme: { extend: {} },
+  theme: {
+    extend: {
+      fontFamily: {
+        mono: [
+          "var(--font-mono)",
+          "SF Mono",
+          "Fira Code",
+          "Consolas",
+          "monospace",
+        ],
+      },
+    },
+  },
   plugins: [],
 };
 export default config;

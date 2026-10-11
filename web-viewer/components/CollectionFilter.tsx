@@ -46,7 +46,6 @@ function CollectionItem({
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(c.name);
-  const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isDefaultPending, startDefaultTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -54,7 +53,6 @@ function CollectionItem({
   const startEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
     setValue(c.name);
-    setError(null);
     setEditing(true);
     setTimeout(() => inputRef.current?.select(), 50);
   };
@@ -62,7 +60,6 @@ function CollectionItem({
   const cancelEdit = () => {
     setEditing(false);
     setValue(c.name);
-    setError(null);
   };
 
   const saveEdit = () => {
@@ -71,101 +68,10 @@ function CollectionItem({
       return;
     }
     startTransition(async () => {
-      const result = await renameCollection(c.id, value);
-      if (error) setError(error);
-      else {
-        setEditing(false);
-        setError(null);
-      }
+      await renameCollection(c.id, value);
+      setEditing(false);
     });
   };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") saveEdit();
-    if (e.key === "Escape") cancelEdit();
-  };
-
-  if (editing) {
-    return (
-      <div className="px-3 py-1.5 space-y-1">
-        <div className="flex items-center gap-1.5">
-          <input
-            ref={inputRef}
-            type="text"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            maxLength={255}
-            autoFocus
-            className="flex-1 min-w-0 text-sm px-2 py-1 rounded-md border border-indigo-400 dark:border-indigo-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          <button
-            type="button"
-            onClick={saveEdit}
-            disabled={isPending}
-            className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 p-1 disabled:opacity-40"
-            aria-label="Save"
-          >
-            {isPending ? (
-              <svg
-                className="w-4 h-4 animate-spin"
-                viewBox="0 0 24 24"
-                fill="none"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8v8H4z"
-                />
-              </svg>
-            ) : (
-              <svg
-                className="w-4 h-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={cancelEdit}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1"
-            aria-label="Cancel"
-          >
-            <svg
-              className="w-4 h-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-        {error && (
-          <p className="text-xs text-red-500 dark:text-red-400 px-1">{error}</p>
-        )}
-      </div>
-    );
-  }
 
   const handleSetDefault = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -175,83 +81,27 @@ function CollectionItem({
     });
   };
 
-  return (
-    <div className="group/item">
-      <div className="flex items-center gap-1">
-        {/* Default star */}
-        <button
-          type="button"
-          onClick={handleSetDefault}
-          disabled={c.is_default || isDefaultPending}
-          aria-label={
-            c.is_default
-              ? `${c.name} varsayılan koleksiyon`
-              : `${c.name} koleksiyonunu varsayılan yap`
-          }
-          title={
-            c.is_default
-              ? "Uzantı bu koleksiyona kaydediyor"
-              : "Varsayılan olarak ayarla — uzantı buraya kaydeder"
-          }
-          className={`p-1 rounded shrink-0 transition-all ${c.is_default ? "text-amber-500 dark:text-amber-400 opacity-100" : "opacity-25 group-hover/item:opacity-100 text-gray-400 hover:text-amber-400 dark:text-gray-500 dark:hover:text-amber-400"}`}
-        >
-          {isDefaultPending ? (
-            <svg
-              className="w-3.5 h-3.5 animate-spin"
-              viewBox="0 0 24 24"
-              fill="none"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8v8H4z"
-              />
-            </svg>
-          ) : (
-            <svg
-              className="w-3.5 h-3.5"
-              viewBox="0 0 24 24"
-              fill={c.is_default ? "currentColor" : "none"}
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-            </svg>
-          )}
-        </button>
-
-        {/* Name */}
-        <button
-          type="button"
-          onClick={() => onNavigate(c.id)}
-          aria-current={isActive ? "page" : undefined}
-          className={`flex-1 min-w-0 text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" : "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"}`}
-        >
-          <span className="block truncate">{c.name}</span>
-        </button>
-
-        {/* Action buttons (hover) */}
-        <div className="opacity-0 group-hover/item:opacity-100 flex items-center gap-0.5 transition-all">
-          {/* Share */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onShare(c);
+  if (editing) {
+    return (
+      <div className="py-1">
+        <div className="flex items-center gap-1">
+          <input
+            ref={inputRef}
+            type="text"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") saveEdit();
+              if (e.key === "Escape") cancelEdit();
             }}
-            aria-label={`${c.name} koleksiyonunu paylaş`}
-            title="Paylaş"
-            className="p-1 rounded text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all shrink-0"
+            maxLength={255}
+            autoFocus
+            className="input-sharp flex-1 min-w-0 text-xs py-1"
+          />
+          <button
+            onClick={saveEdit}
+            disabled={isPending}
+            className="p-1 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
           >
             <svg
               className="w-3.5 h-3.5"
@@ -259,26 +109,13 @@ function CollectionItem({
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
             >
-              <circle cx="18" cy="5" r="3" />
-              <circle cx="6" cy="12" r="3" />
-              <circle cx="18" cy="19" r="3" />
-              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+              <polyline points="20 6 9 17 4 12" />
             </svg>
           </button>
-          {/* Manage members */}
           <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onManage(c);
-            }}
-            aria-label={`${c.name} koleksiyonunun üyelerini yönet`}
-            title="Üyeler"
-            className="p-1 rounded text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all shrink-0"
+            onClick={cancelEdit}
+            className="p-1 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
           >
             <svg
               className="w-3.5 h-3.5"
@@ -286,36 +123,109 @@ function CollectionItem({
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
             >
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-            </svg>
-          </button>
-          {/* Rename */}
-          <button
-            type="button"
-            onClick={startEdit}
-            aria-label={`${c.name} koleksiyonunu yeniden adlandır`}
-            className="p-1 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all shrink-0"
-          >
-            <svg
-              className="w-3.5 h-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
         </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="group flex items-center gap-1">
+      {/* Star for default */}
+      <button
+        onClick={handleSetDefault}
+        disabled={c.is_default || isDefaultPending}
+        className={`p-0.5 transition-colors ${
+          c.is_default
+            ? "text-zinc-900 dark:text-zinc-100"
+            : "text-zinc-300 dark:text-zinc-700 opacity-0 group-hover:opacity-100 hover:text-zinc-500"
+        }`}
+      >
+        <svg
+          className="w-3 h-3"
+          viewBox="0 0 24 24"
+          fill={c.is_default ? "currentColor" : "none"}
+          stroke="currentColor"
+          strokeWidth="1.5"
+        >
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </svg>
+      </button>
+
+      {/* Name */}
+      <button
+        onClick={() => onNavigate(c.id)}
+        className={`flex-1 text-left py-1.5 text-xs transition-colors truncate ${
+          isActive
+            ? "text-zinc-900 dark:text-zinc-100 font-medium"
+            : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+        }`}
+      >
+        {c.name}
+      </button>
+
+      {/* Actions */}
+      <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onShare(c);
+          }}
+          className="p-1 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+        >
+          <svg
+            className="w-3 h-3"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <circle cx="18" cy="5" r="3" />
+            <circle cx="6" cy="12" r="3" />
+            <circle cx="18" cy="19" r="3" />
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+          </svg>
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onManage(c);
+          }}
+          className="p-1 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+        >
+          <svg
+            className="w-3 h-3"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+        </button>
+        <button
+          onClick={startEdit}
+          className="p-1 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+        >
+          <svg
+            className="w-3 h-3"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+        </button>
       </div>
     </div>
   );
@@ -333,79 +243,68 @@ function SharedCollectionItem({
   onLeave: (id: string) => void;
 }) {
   const isCollab = c.member_role === "collaborator";
+
   return (
-    <div className="group/item flex items-center gap-1">
+    <div className="group flex items-center gap-1">
       <button
-        type="button"
         onClick={() => onNavigate(c.collection_id)}
-        aria-current={isActive ? "page" : undefined}
-        className={`flex-1 min-w-0 text-left px-3 py-2 rounded-lg transition-colors ${isActive ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" : "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"}`}
+        className={`flex-1 text-left py-1.5 transition-colors ${
+          isActive
+            ? "text-zinc-900 dark:text-zinc-100"
+            : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+        }`}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          {isCollab ? (
-            <svg
-              className="w-3 h-3 shrink-0 text-indigo-400 dark:text-indigo-500"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-            </svg>
-          ) : (
-            <svg
-              className="w-3 h-3 shrink-0 text-gray-400 dark:text-gray-600"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-          )}
+        <div className="flex items-center gap-2">
+          <svg
+            className={`w-3 h-3 shrink-0 ${isCollab ? "text-zinc-600 dark:text-zinc-400" : "text-zinc-400 dark:text-zinc-600"}`}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            {isCollab ? (
+              <>
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </>
+            ) : (
+              <>
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </>
+            )}
+          </svg>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium truncate">{c.collection_name}</p>
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
+            <p className={`text-xs truncate ${isActive ? "font-medium" : ""}`}>
+              {c.collection_name}
+            </p>
+            <p className="mono text-[10px] text-zinc-400 truncate">
               {c.owner_email}
             </p>
           </div>
         </div>
       </button>
-      <div className="opacity-0 group-hover/item:opacity-100 flex items-center gap-0.5 transition-all">
-        {/* Leave collection */}
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onLeave(c.collection_id);
-          }}
-          aria-label="Koleksiyondan ayrıl"
-          title="Ayrıl"
-          className="p-1 rounded text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all shrink-0"
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onLeave(c.collection_id);
+        }}
+        className="p-1 text-zinc-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+      >
+        <svg
+          className="w-3 h-3"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
         >
-          <svg
-            className="w-3.5 h-3.5"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
-        </button>
-      </div>
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+      </button>
     </div>
   );
 }
@@ -429,7 +328,6 @@ export default function CollectionFilter({
     if (!confirm("Bu koleksiyondan ayrılmak istiyor musun?")) return;
     startLeaveTransition(async () => {
       await leaveCollection(collectionId);
-      // Page will revalidate, sidebar will refresh
     });
   };
 
@@ -437,8 +335,8 @@ export default function CollectionFilter({
     const params = new URLSearchParams(searchParams.toString());
     if (collectionId) params.set("collection", collectionId);
     else params.delete("collection");
-    const qs = params.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
+    params.delete("tag");
+    router.push(params.toString() ? `${pathname}?${params}` : pathname);
   }
 
   const sorted = [...ownedCollections].sort(
@@ -447,89 +345,73 @@ export default function CollectionFilter({
 
   return (
     <>
-      <aside className="w-52 shrink-0">
-        <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 px-3 mb-2">
-          Collections
-        </p>
-        <nav className="space-y-0.5">
-          {/* All */}
-          <button
-            type="button"
-            onClick={() => navigate()}
-            aria-current={!activeId ? "page" : undefined}
-            className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${!activeId ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" : "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"}`}
-          >
-            All
-          </button>
-
-          {/* Owned collections */}
-          {sorted.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-600 italic">
-              Henüz koleksiyon yok
-            </p>
-          ) : (
-            sorted.map((c) => (
-              <CollectionItem
-                key={c.id}
-                c={c}
-                isActive={activeId === c.id}
-                onNavigate={navigate}
-                onShare={setShareTarget}
-                onManage={setManageTarget}
-              />
-            ))
-          )}
-
-          {/* Shared collections section */}
-          {sharedCollections.length > 0 && (
-            <>
-              <div className="pt-3 pb-1 px-3">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
-                  Paylaşılanlar
-                </p>
-              </div>
-              {sharedCollections.map((c) => (
-                <SharedCollectionItem
-                  key={c.collection_id}
-                  c={c}
-                  isActive={activeId === c.collection_id}
-                  onNavigate={navigate}
-                  onLeave={handleLeave}
-                />
-              ))}
-            </>
-          )}
-
-          {/* Join button */}
-          <div className="pt-3">
+      <aside className="w-48 shrink-0 space-y-8">
+        {/* Collections */}
+        <div className="space-y-3">
+          <p className="sidebar-header">Koleksiyonlar</p>
+          <nav className="space-y-0.5">
+            {/* All */}
             <button
-              type="button"
-              onClick={() => setJoinOpen(true)}
-              className="flex items-center gap-1.5 w-full px-3 py-1.5 text-xs font-medium text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg transition-colors"
+              onClick={() => navigate()}
+              className={`w-full text-left py-1.5 text-xs transition-colors ${
+                !activeId
+                  ? "text-zinc-900 dark:text-zinc-100 font-medium"
+                  : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+              }`}
             >
-              <svg
-                className="w-3.5 h-3.5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="16" />
-                <line x1="8" y1="12" x2="16" y2="12" />
-              </svg>
-              Koleksiyona Katıl
+              Tümü
             </button>
-          </div>
-        </nav>
 
-        {/* Tags section */}
+            {sorted.length === 0 ? (
+              <p className="py-2 text-xs text-zinc-400 italic">
+                Henüz koleksiyon yok
+              </p>
+            ) : (
+              sorted.map((c) => (
+                <CollectionItem
+                  key={c.id}
+                  c={c}
+                  isActive={activeId === c.id}
+                  onNavigate={navigate}
+                  onShare={setShareTarget}
+                  onManage={setManageTarget}
+                />
+              ))
+            )}
+
+            {/* Shared */}
+            {sharedCollections.length > 0 && (
+              <div className="pt-4 space-y-0.5">
+                <p className="sidebar-header">Paylaşılan</p>
+                {sharedCollections.map((c) => (
+                  <SharedCollectionItem
+                    key={c.collection_id}
+                    c={c}
+                    isActive={activeId === c.collection_id}
+                    onNavigate={navigate}
+                    onLeave={handleLeave}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Join - Dashed button */}
+            <div className="pt-4">
+              <button
+                onClick={() => setJoinOpen(true)}
+                className="dashed-button w-full flex items-center justify-center gap-1.5 py-2 text-xs"
+              >
+                <span className="mono">+</span>
+                <span>KOLEKSİYONA KATIL</span>
+              </button>
+            </div>
+          </nav>
+        </div>
+
+        {/* Tags */}
         <TagFilter tags={tags} activeTagId={activeTagId} />
       </aside>
 
-      {/* Modals */}
       {shareTarget && (
         <ShareModal
           collectionId={shareTarget.id}

@@ -11,7 +11,10 @@ export default function SearchBar({ initialQuery }: { initialQuery: string }) {
   const isFirst = useRef(true);
 
   useEffect(() => {
-    if (isFirst.current) { isFirst.current = false; return; }
+    if (isFirst.current) {
+      isFirst.current = false;
+      return;
+    }
     const timer = setTimeout(() => {
       const params = new URLSearchParams(window.location.search);
       const trimmed = value.trim();
@@ -24,21 +27,34 @@ export default function SearchBar({ initialQuery }: { initialQuery: string }) {
 
   return (
     <div className="relative">
+      {/* Search icon */}
       <svg
-        className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500 pointer-events-none"
-        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+        className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={1.5}
       >
-        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.35-4.35" />
       </svg>
+
       <input
         type="search"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         maxLength={200}
-        placeholder="Search posts…"
+        placeholder="Ara..."
         aria-label="Search posts"
-        className="w-full h-10 pl-9 pr-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+        className="input-sharp pl-10 pr-16 h-9 text-sm"
       />
+
+      {/* Keyboard shortcut indicator */}
+      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
+        <kbd className="mono text-[10px] px-1.5 py-0.5 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-400">
+          ⌘K
+        </kbd>
+      </div>
     </div>
   );
 }

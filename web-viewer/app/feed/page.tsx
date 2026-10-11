@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase";
 import CollectionFilter from "@/components/CollectionFilter";
-import SearchBar from "@/components/SearchBar";
+import PlatformFilter from "@/components/PlatformFilter";
 import PostCardList from "@/components/PostCardList";
 import type {
   Collection,
@@ -14,15 +14,16 @@ import type {
 } from "@/lib/types";
 
 interface FeedPageProps {
-  searchParams: { collection?: string; q?: string; tag?: string };
+  searchParams: {
+    collection?: string;
+    q?: string;
+    tag?: string;
+    platform?: "instagram" | "x" | "threads";
+  };
 }
 
 const PAGE_SIZE = 24;
 
-/**
- * Explicit column list for feed queries.
- * Excludes search_vector (tsvector) to avoid serialising index data to the client.
- */
 const FEED_SELECT =
   "id, user_id, post_url, post_type, platform, " +
   "author_username, author_display_name, author_avatar_url, " +
@@ -40,26 +41,35 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
   const collectionId = searchParams.collection;
   const trimmedQ = searchParams.q?.trim();
   const tagId = searchParams.tag;
+  const platformFilter = searchParams.platform;
+
+  // ── Get platform counts first ───────────────────────────────────────────────
+  let platformCountsQuery = supabase.from("saved_posts").select("platform");
+
+  if (collectionId)
+    platformCountsQuery = platformCountsQuery.eq("collection_id", collectionId);
+
+  const { data: allPostsForCounts } = await platformCountsQuery;
+
+  const platformCounts = {
+    all: allPostsForCounts?.length ?? 0,
+    instagram:
+      allPostsForCounts?.filter((p) => p.platform === "instagram").length ?? 0,
+    x: allPostsForCounts?.filter((p) => p.platform === "x").length ?? 0,
+    threads:
+      allPostsForCounts?.filter((p) => p.platform === "threads").length ?? 0,
+  };
 
   // ── Build the posts query ───────────────────────────────────────────────────
-  // Search mode:  FTS via search_saved_posts() RPC → ts_rank ordered, returns
-  //               up to 100 results at once (no infinite scroll for search).
-  // Browse mode:  Cursor-based keyset pagination → first PAGE_SIZE posts with
-  //               a cursor for infinite scroll in PostCardList.
-  // Tag filter:   Join with post_tags when a tag filter is active.
-
   let postsPromise;
 
   if (trimmedQ) {
-    // Search mode — doesn't support tag filtering (TODO: could be added)
     postsPromise = supabase.rpc("search_saved_posts", {
       p_query: trimmedQ,
       p_collection_id: collectionId ?? null,
       p_limit: 100,
     });
   } else if (tagId) {
-    // Tag filter mode — get post IDs from post_tags then fetch posts
-    // This approach avoids complex joins in PostgREST
     postsPromise = (async () => {
       const { data: postTagRows } = await supabase
         .from("post_tags")
@@ -81,11 +91,11 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
         .limit(PAGE_SIZE + 1);
 
       if (collectionId) q = q.eq("collection_id", collectionId);
+      if (platformFilter) q = q.eq("platform", platformFilter);
 
       return q;
     })();
   } else {
-    // Normal browse mode
     let q = supabase
       .from("saved_posts")
       .select(FEED_SELECT)
@@ -94,10 +104,11 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
       .limit(PAGE_SIZE + 1);
 
     if (collectionId) q = q.eq("collection_id", collectionId);
+    if (platformFilter) q = q.eq("platform", platformFilter);
+
     postsPromise = q;
   }
 
-  // Fetch posts + sidebar collections + tags in parallel.
   const [
     postsResult,
     { data: ownedCollections },
@@ -145,19 +156,21 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
   let nextCursor: PostCursor | null;
 
   if (trimmedQ) {
-    // Search: RPC returns flat collection_name; reshape to match FeedPost.
     type SearchRow = Omit<FeedPost, "collections"> & {
       collection_name: string | null;
     };
-    posts = ((postsResult.data ?? []) as SearchRow[]).map(
+    let searchPosts = ((postsResult.data ?? []) as SearchRow[]).map(
       ({ collection_name, ...rest }) => ({
         ...rest,
         collections: collection_name ? { name: collection_name } : null,
       }),
     );
-    nextCursor = null; // No infinite scroll in search mode
+    if (platformFilter) {
+      searchPosts = searchPosts.filter((p) => p.platform === platformFilter);
+    }
+    posts = searchPosts;
+    nextCursor = null;
   } else {
-    // Browse: detect next page via the extra row.
     const rows = (postsResult.data ?? []) as unknown as FeedPost[];
     const hasMore = rows.length > PAGE_SIZE;
     posts = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
@@ -176,7 +189,6 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
       postIds.length > 0 ? postIds : ["00000000-0000-0000-0000-000000000000"],
     );
 
-  // Build a map of postId -> tags
   const postTagsMap = new Map<string, Tag[]>();
   (postTagsData ?? []).forEach((pt) => {
     const tag = pt.tags as unknown as Tag;
@@ -185,7 +197,6 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
     postTagsMap.get(pt.post_id)!.push(tag);
   });
 
-  // Attach tags to posts
   posts = posts.map((p) => ({
     ...p,
     tags: postTagsMap.get(p.id) ?? [],
@@ -204,10 +215,10 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
   );
 
   return (
-    <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-6 flex gap-6 items-start">
+    <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-6 flex gap-8 items-start">
       {/* Sidebar */}
       <Suspense fallback={null}>
-        <div className="w-52 shrink-0 sticky top-[calc(3.5rem+1.5rem)]">
+        <div className="w-48 shrink-0 sticky top-[calc(3rem+1.5rem)]">
           <CollectionFilter
             ownedCollections={(ownedCollections as Collection[]) ?? []}
             sharedCollections={(sharedCollections as SharedCollection[]) ?? []}
@@ -219,11 +230,17 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
       </Suspense>
 
       {/* Main */}
-      <div className="flex-1 min-w-0 flex flex-col gap-5">
-        <SearchBar initialQuery={searchParams.q ?? ""} />
+      <div className="flex-1 min-w-0 flex flex-col gap-4">
+        {/* Platform Filter */}
+        <PlatformFilter
+          activePlatform={platformFilter}
+          counts={platformCounts}
+        />
+
         <PostCardList
           posts={posts}
           currentUserId={session.user.id}
+          currentUserEmail={session.user.email ?? ""}
           isCollaborativeView={isCollaborativeView}
           initialCursor={nextCursor}
           collectionId={collectionId}
@@ -231,6 +248,7 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
           ownedCollections={(ownedCollections as Collection[]) ?? []}
           allTags={(tagsData as Tag[]) ?? []}
           activeTagId={tagId}
+          activePlatform={platformFilter}
         />
       </div>
     </div>

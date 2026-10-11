@@ -2,13 +2,15 @@
 import { ModalPortal } from "@/components/ModalPortal";
 
 import { useState, useTransition, useRef, useEffect, useCallback } from "react";
-import type { Collection, Tag } from "@/lib/types";
+import type { Collection, Tag, PostComment } from "@/lib/types";
 import {
   movePost,
-  updatePostNote,
   addTagToPost,
   removeTagFromPost,
   createTagAndAddToPost,
+  getPostComments,
+  addPostComment,
+  deletePostComment,
 } from "@/app/actions";
 import type { FeedPost } from "@/lib/types";
 import { deletePost } from "@/app/actions";
@@ -17,84 +19,43 @@ import { deletePost } from "@/app/actions";
 
 function InstagramIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
-    <svg
-      aria-label="Instagram"
-      role="img"
-      viewBox="0 0 24 24"
-      fill="none"
-      className={className}
-    >
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
       <rect
         x="2"
         y="2"
         width="20"
         height="20"
-        rx="5"
-        stroke="url(#ig-g)"
-        strokeWidth="2"
+        rx="0"
+        stroke="currentColor"
+        strokeWidth="1.5"
         fill="none"
       />
       <circle
         cx="12"
         cy="12"
         r="4.5"
-        stroke="url(#ig-g)"
-        strokeWidth="2"
+        stroke="currentColor"
+        strokeWidth="1.5"
         fill="none"
       />
-      <circle cx="17.5" cy="6.5" r="1" fill="url(#ig-g)" />
-      <defs>
-        <linearGradient id="ig-g" x1="0" y1="24" x2="24" y2="0">
-          <stop offset="0%" stopColor="#f09433" />
-          <stop offset="50%" stopColor="#dc2743" />
-          <stop offset="100%" stopColor="#bc1888" />
-        </linearGradient>
-      </defs>
+      <circle cx="17.5" cy="6.5" r="1" fill="currentColor" />
     </svg>
   );
 }
 
 function XIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
-    <svg
-      aria-label="X"
-      role="img"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-    >
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
       <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.747l7.73-8.835L2.002 2.25h6.351l4.266 5.643L18.244 2.25z" />
     </svg>
   );
 }
 
-// ── Highlight helper ──────────────────────────────────────────────────────────
-
-function highlight(text: string, query: string): React.ReactNode {
-  const terms = query
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-
-  if (!terms.length) return text;
-
-  const re = new RegExp(`(${terms.join("|")})`, "gi");
-  const parts = text.split(re);
-
-  if (parts.length === 1) return text;
-
-  return parts.map((part, i) =>
-    i % 2 === 1 ? (
-      <mark
-        key={i}
-        className="bg-yellow-200/80 dark:bg-yellow-500/30 text-inherit rounded-[2px] not-italic"
-      >
-        {part}
-      </mark>
-    ) : (
-      part || null
-    ),
+function ThreadsIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M12.186 24h-.007c-3.581-.024-6.334-1.205-8.184-3.509C2.35 18.44 1.5 15.586 1.472 12.01v-.017c.03-3.579.879-6.43 2.525-8.482C5.845 1.205 8.6.024 12.18 0h.014c2.746.02 5.043.725 6.826 2.098 1.677 1.29 2.858 3.13 3.509 5.467l-2.04.569c-1.104-3.96-3.898-5.984-8.304-6.015-2.91.022-5.11.936-6.54 2.717C4.307 6.504 3.616 8.914 3.59 12c.025 3.086.718 5.496 2.057 7.164 1.43 1.783 3.631 2.698 6.54 2.717 2.623-.02 4.358-.631 5.8-2.045 1.647-1.613 1.618-3.593 1.09-4.798-.31-.71-.873-1.3-1.634-1.75-.192 1.352-.622 2.446-1.284 3.272-.886 1.102-2.14 1.704-3.73 1.79-1.202.065-2.361-.218-3.259-.801-1.063-.689-1.685-1.74-1.752-2.96-.065-1.182.408-2.256 1.332-3.023.88-.73 2.082-1.18 3.48-1.304.996-.089 1.94-.04 2.818.136v-.02c-.005-1.263-.086-2.153-.503-2.786-.387-.588-1.048-.889-1.962-.897h-.04c-.748.005-1.512.205-1.87.549l-1.325-1.597c.705-.586 1.803-.98 3.166-1.003h.06c1.474.016 2.627.506 3.428 1.457.739.878 1.127 2.085 1.153 3.59v.137c1.113.453 2.005 1.089 2.653 1.903.847 1.064 1.277 2.416 1.242 3.912-.035 1.494-.527 2.84-1.47 4.012C19.452 22.428 16.61 23.978 12.186 24z" />
+    </svg>
   );
 }
 
@@ -105,12 +66,12 @@ function safeUrl(url: string | null | undefined): string | null {
   return /^https?:\/\//i.test(url) ? url : null;
 }
 
-const MAX_LEN = 240;
 const POST_TYPE_LABELS: Record<string, string> = {
-  post: "Post",
-  reel: "Reel",
-  story: "Story",
-  tweet: "Tweet",
+  post: "POST",
+  reel: "REEL",
+  story: "STORY",
+  tweet: "TWEET",
+  thread: "THREAD",
 };
 
 // ── DeleteDialog ──────────────────────────────────────────────────────────────
@@ -128,50 +89,22 @@ function DeleteDialog({
         className="fixed inset-0 z-50 flex items-center justify-center p-4"
         onClick={onCancel}
       >
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+        <div className="absolute inset-0 bg-black/60" />
         <div
-          className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-[320px] p-6 flex flex-col gap-5 border border-gray-100 dark:border-gray-800"
+          className="relative bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 w-full max-w-sm p-6 space-y-4"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-start gap-4">
-            <div className="w-11 h-11 rounded-full bg-red-50 dark:bg-red-950/60 flex items-center justify-center shrink-0 ring-1 ring-red-100 dark:ring-red-900/40">
-              <svg
-                className="w-5 h-5 text-red-500"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="3 6 5 6 21 6" />
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                <path d="M10 11v6M14 11v6" />
-                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-              </svg>
-            </div>
-            <div className="pt-0.5">
-              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-snug">
-                Bu kaydı sil?
-              </p>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-                Arşivinden kaldırılacak, geri alınamaz.
-              </p>
-            </div>
+          <div className="text-center space-y-2">
+            <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+              Bu kaydı silmek istediğine emin misin?
+            </p>
+            <p className="mono text-zinc-500">Bu işlem geri alınamaz.</p>
           </div>
-          <div className="flex gap-2.5">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="flex-1 px-4 py-2 text-sm font-medium rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            >
+          <div className="flex gap-3">
+            <button onClick={onCancel} className="btn-minimal flex-1">
               Vazgeç
             </button>
-            <button
-              type="button"
-              onClick={onConfirm}
-              className="flex-1 px-4 py-2 text-sm font-medium rounded-xl bg-red-500 hover:bg-red-600 active:bg-red-700 text-white transition-colors shadow-sm"
-            >
+            <button onClick={onConfirm} className="btn-danger flex-1">
               Sil
             </button>
           </div>
@@ -181,128 +114,244 @@ function DeleteDialog({
   );
 }
 
-// ── NoteEditor ────────────────────────────────────────────────────────────────
+// ── CommentSection (Facebook-style comments) ──────────────────────────────────
 
-interface NoteEditorProps {
+interface CommentSectionProps {
   postId: string;
-  initialNote: string | null;
-  noteType: "note" | "public_note";
-  onNoteChange: (note: string | null) => void;
-  onClose: () => void;
-  label: string;
-  placeholder: string;
+  currentUserEmail: string;
 }
 
-function NoteEditor({
-  postId,
-  initialNote,
-  noteType,
-  onNoteChange,
-  onClose,
-  label,
-  placeholder,
-}: NoteEditorProps) {
-  const [value, setValue] = useState(initialNote ?? "");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+function CommentSection({ postId, currentUserEmail }: CommentSectionProps) {
+  const [comments, setComments] = useState<PostComment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [value, setValue] = useState("");
+  const [isPublic, setIsPublic] = useState(false);
+  const [sending, setSending] = useState(false);
+  const commentsEndRef = useRef<HTMLDivElement>(null);
 
+  // Load comments on mount
   useEffect(() => {
-    textareaRef.current?.focus();
-  }, []);
-
-  // Click outside to close
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
-        onClose();
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [onClose]);
-
-  const saveNote = useCallback(
-    async (note: string) => {
-      setSaving(true);
-      setSaved(false);
-      const result = await updatePostNote(postId, note || null, noteType);
-      setSaving(false);
+    const loadComments = async () => {
+      const result = await getPostComments(postId);
       if (result.ok) {
-        setSaved(true);
-        onNoteChange(note || null);
-        setTimeout(() => setSaved(false), 1500);
+        setComments(result.data);
       }
-    },
-    [postId, noteType, onNoteChange],
-  );
+      setLoading(false);
+    };
+    loadComments();
+  }, [postId]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newValue = e.target.value;
-    setValue(newValue);
+  // Scroll to bottom when new comment added
+  useEffect(() => {
+    commentsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [comments.length]);
 
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
+  const handleSubmit = async () => {
+    if (!value.trim() || sending) return;
+    setSending(true);
+    const result = await addPostComment(postId, value.trim(), isPublic);
+    setSending(false);
+    if (result.ok) {
+      setComments((prev) => [...prev, result.data]);
+      setValue("");
     }
-
-    saveTimeoutRef.current = setTimeout(() => {
-      saveNote(newValue);
-    }, 800);
   };
 
-  useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, []);
+  const handleDelete = async (commentId: string) => {
+    const result = await deletePostComment(commentId);
+    if (result.ok) {
+      setComments((prev) => prev.filter((c) => c.id !== commentId));
+    }
+  };
+
+  const formatTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const mins = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (mins < 1) return "şimdi";
+    if (mins < 60) return `${mins}dk`;
+    if (hours < 24) return `${hours}sa`;
+    if (days < 7) return `${days}g`;
+    return date.toLocaleDateString("tr-TR", {
+      day: "2-digit",
+      month: "2-digit",
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <span className="mono text-zinc-400">...</span>
+      </div>
+    );
+  }
 
   return (
-    <div
-      ref={containerRef}
-      className="mt-2 space-y-1.5"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-          {label}
-        </span>
-        <div className="flex items-center gap-2">
-          {saving && (
-            <span className="text-[10px] text-slate-400 dark:text-slate-500">
-              Kaydediliyor...
+    <div className="flex flex-col h-full">
+      {/* Comments list - scrollable */}
+      <div className="flex-1 overflow-y-auto space-y-3 mb-4 max-h-[250px] scrollbar-thin">
+        {comments.length === 0 ? (
+          <p className="mono text-zinc-400 text-center py-4">Henüz yorum yok</p>
+        ) : (
+          comments.map((comment) => (
+            <div
+              key={comment.id}
+              className={`p-3 border ${
+                comment.is_public
+                  ? "border-zinc-200 dark:border-zinc-800"
+                  : "border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <div className="flex items-center gap-2 min-w-0">
+                  {/* Privacy icon */}
+                  {comment.is_public ? (
+                    <svg
+                      className="w-3 h-3 text-zinc-400 shrink-0"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="2" y1="12" x2="22" y2="12" />
+                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="w-3 h-3 text-zinc-400 shrink-0"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                  )}
+                  {/* Email */}
+                  <span className="mono text-zinc-500 truncate text-[11px]">
+                    {comment.user_email}
+                  </span>
+                  {/* Time */}
+                  <span className="mono text-zinc-400 text-[11px] shrink-0">
+                    · {formatTime(comment.created_at)}
+                  </span>
+                </div>
+                {/* Delete button - only for own comments */}
+                {comment.user_email === currentUserEmail && (
+                  <button
+                    onClick={() => handleDelete(comment.id)}
+                    className="text-zinc-400 hover:text-red-500 transition-colors shrink-0"
+                  >
+                    <svg
+                      className="w-3 h-3"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">
+                {comment.content}
+              </p>
+            </div>
+          ))
+        )}
+        <div ref={commentsEndRef} />
+      </div>
+
+      {/* Input area - fixed at bottom */}
+      <div className="border-t border-zinc-200 dark:border-zinc-800 pt-3 space-y-2">
+        <textarea
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSubmit();
+            }
+          }}
+          placeholder={
+            isPublic ? "Herkese açık yorum yaz..." : "Kişisel yorum yaz..."
+          }
+          maxLength={2000}
+          rows={2}
+          className="input-sharp resize-none text-sm w-full"
+        />
+
+        <div className="flex items-center justify-between">
+          {/* Toggle */}
+          <button
+            type="button"
+            onClick={() => setIsPublic(!isPublic)}
+            className="flex items-center gap-2"
+          >
+            <div
+              className={`relative w-8 h-4 border transition-colors ${
+                isPublic
+                  ? "bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-600"
+                  : "bg-zinc-800 dark:bg-zinc-200 border-zinc-800 dark:border-zinc-200"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 w-3 h-3 transition-all ${
+                  isPublic
+                    ? "left-4 bg-zinc-600 dark:bg-zinc-400"
+                    : "left-0.5 bg-zinc-100 dark:bg-zinc-800"
+                }`}
+              />
+            </div>
+            <span className="mono text-zinc-500 text-[11px]">
+              {isPublic ? "HERKESE AÇIK" : "KİŞİSEL"}
             </span>
-          )}
-          {saved && !saving && (
-            <span className="text-[10px] text-emerald-500 dark:text-emerald-400">
-              ✓
+          </button>
+
+          <div className="flex items-center gap-3">
+            <span className="mono text-zinc-400 text-[11px]">
+              {value.length}/2000
             </span>
-          )}
-          <span className="text-[10px] text-slate-400 dark:text-slate-500">
-            {value.length}/2000
-          </span>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!value.trim() || sending}
+              className="btn-primary px-3 py-1.5 disabled:opacity-40 flex items-center gap-1.5"
+            >
+              {sending ? (
+                <span className="mono text-[11px]">...</span>
+              ) : (
+                <>
+                  <svg
+                    className="w-3.5 h-3.5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <line x1="22" y1="2" x2="11" y2="13" />
+                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                  </svg>
+                  <span className="mono text-[11px]">GÖNDER</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={handleChange}
-        placeholder={placeholder}
-        maxLength={2000}
-        rows={2}
-        className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-slate-400 dark:focus:ring-slate-500 focus:border-transparent transition-shadow"
-      />
     </div>
   );
 }
 
-// ── TagPicker ─────────────────────────────────────────────────────────────────
+// ── TagPicker (for modal) ─────────────────────────────────────────────────────
 
 interface TagPickerProps {
   postId: string;
@@ -310,7 +359,6 @@ interface TagPickerProps {
   allTags: Tag[];
   onTagAdded: (tag: Tag) => void;
   onTagRemoved: (tagId: string) => void;
-  onClose: () => void;
 }
 
 function TagPicker({
@@ -319,30 +367,9 @@ function TagPicker({
   allTags,
   onTagAdded,
   onTagRemoved,
-  onClose,
 }: TagPickerProps) {
   const [query, setQuery] = useState("");
   const [isPending, startTransition] = useTransition();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  // Click outside to close
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
-        onClose();
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [onClose]);
 
   const currentTagIds = new Set(currentTags.map((t) => t.id));
   const availableTags = allTags.filter(
@@ -379,49 +406,31 @@ function TagPicker({
   const handleRemoveTag = (tagId: string) => {
     startTransition(async () => {
       const result = await removeTagFromPost(postId, tagId);
-      if (result.ok) {
-        onTagRemoved(tagId);
-      }
+      if (result.ok) onTagRemoved(tagId);
     });
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && showCreateOption) {
-      e.preventDefault();
-      handleCreateAndAdd();
-    }
-    if (e.key === "Escape") {
-      onClose();
-    }
-  };
-
   return (
-    <div
-      ref={containerRef}
-      className="mt-2 space-y-2"
-      onClick={(e) => e.stopPropagation()}
-    >
-      {/* Current tags */}
+    <div className="space-y-3">
       {currentTags.length > 0 && (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-2">
           {currentTags.map((tag) => (
             <span
               key={tag.id}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/50"
+              className="inline-flex items-center gap-1.5 mono text-zinc-700 dark:text-zinc-300"
             >
-              {tag.name}
+              #{tag.name}
               <button
-                type="button"
                 onClick={() => handleRemoveTag(tag.id)}
                 disabled={isPending}
-                className="hover:text-red-500 dark:hover:text-red-400 disabled:opacity-50 transition-colors"
+                className="text-zinc-400 hover:text-red-500 transition-colors"
               >
                 <svg
                   className="w-3 h-3"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="2.5"
+                  strokeWidth="2"
                 >
                   <line x1="18" y1="6" x2="6" y2="18" />
                   <line x1="6" y1="6" x2="18" y2="18" />
@@ -431,81 +440,37 @@ function TagPicker({
           ))}
         </div>
       )}
-
-      {/* Search/create input */}
-      <div className="relative">
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Etiket ara veya oluştur..."
-          maxLength={50}
-          className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:focus:ring-slate-500 focus:border-transparent transition-shadow"
-        />
-        {isPending && (
-          <div className="absolute right-2 top-1/2 -translate-y-1/2">
-            <svg
-              className="w-4 h-4 animate-spin text-slate-500"
-              viewBox="0 0 24 24"
-              fill="none"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8v8H4z"
-              />
-            </svg>
-          </div>
-        )}
-      </div>
-
-      {/* Suggestions dropdown */}
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) =>
+          e.key === "Enter" && showCreateOption && handleCreateAndAdd()
+        }
+        placeholder="Etiket ara veya oluştur..."
+        className="input-sharp text-sm"
+      />
       {(availableTags.length > 0 || showCreateOption) && (
-        <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-lg max-h-32 overflow-y-auto">
+        <div className="border border-zinc-200 dark:border-zinc-800 overflow-hidden">
           {showCreateOption && (
             <button
-              type="button"
               onClick={handleCreateAndAdd}
               disabled={isPending}
-              className="w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 disabled:opacity-50 transition-colors"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-2"
             >
-              <svg
-                className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              <span className="text-slate-700 dark:text-slate-200 font-medium">
-                &ldquo;{query.trim()}&rdquo;
-              </span>
-              <span className="text-slate-400 dark:text-slate-500 text-xs">
-                oluştur
-              </span>
+              <span className="mono">+</span>
+              <span className="mono">#{query.trim()}</span>
+              <span className="mono text-zinc-400">oluştur</span>
             </button>
           )}
           {availableTags.slice(0, 5).map((tag) => (
             <button
               key={tag.id}
-              type="button"
               onClick={() => handleAddTag(tag)}
               disabled={isPending}
-              className="w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 disabled:opacity-50 transition-colors"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 mono text-zinc-600 dark:text-zinc-400"
             >
-              {tag.name}
+              #{tag.name}
             </button>
           ))}
         </div>
@@ -514,7 +479,257 @@ function TagPicker({
   );
 }
 
-// ── PostCard ──────────────────────────────────────────────────────────────────
+// ── PostDetailModal (ultra-minimalist) ────────────────────────────────────────
+
+interface PostDetailModalProps {
+  post: FeedPost;
+  onClose: () => void;
+  isOwnPost: boolean;
+  allTags: Tag[];
+  localTags: Tag[];
+  onTagAdded: (tag: Tag) => void;
+  onTagRemoved: (tagId: string) => void;
+  thumbnailUrl: string | null;
+  onDelete: () => void;
+  currentUserEmail: string;
+}
+
+function PostDetailModal({
+  post,
+  onClose,
+  isOwnPost,
+  allTags,
+  localTags,
+  onTagAdded,
+  onTagRemoved,
+  thumbnailUrl,
+  onDelete,
+  currentUserEmail,
+}: PostDetailModalProps) {
+  const [activeTab, setActiveTab] = useState<"content" | "comments" | "tags">(
+    "content",
+  );
+  const [thumbError, setThumbError] = useState(false);
+
+  const contentText = post.content_text ?? "";
+  const displayName = post.author_display_name || post.author_username;
+  const actualThumbnail = thumbError ? null : thumbnailUrl;
+
+  const date = new Date(post.saved_at).toLocaleDateString("tr-TR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+
+  const time = new Date(post.saved_at).toLocaleTimeString("tr-TR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleEsc);
+    return () => document.removeEventListener("keydown", handleEsc);
+  }, [onClose]);
+
+  return (
+    <ModalPortal>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        onClick={onClose}
+      >
+        <div className="absolute inset-0 bg-black/70" />
+
+        <div
+          className="relative bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col md:flex-row"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Left: Media */}
+          <div className="md:w-1/2 bg-zinc-100 dark:bg-zinc-950 flex items-center justify-center min-h-[200px] md:min-h-0 border-r border-zinc-200 dark:border-zinc-800">
+            {actualThumbnail ? (
+              <img
+                src={actualThumbnail}
+                alt=""
+                onError={() => setThumbError(true)}
+                className="w-full h-full object-contain max-h-[40vh] md:max-h-[90vh]"
+              />
+            ) : (
+              <div className="text-zinc-300 dark:text-zinc-700 p-8">
+                {post.platform === "instagram" ? (
+                  <InstagramIcon className="w-16 h-16" />
+                ) : post.platform === "threads" ? (
+                  <ThreadsIcon className="w-16 h-16" />
+                ) : (
+                  <XIcon className="w-16 h-16" />
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Right: Content */}
+          <div className="md:w-1/2 flex flex-col max-h-[50vh] md:max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
+              <div className="flex items-center gap-3">
+                <div className="avatar-circle w-8 h-8 bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 mono text-xs">
+                  {displayName?.[0]?.toUpperCase() ?? "?"}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                    {displayName || "Bilinmeyen"}
+                  </p>
+                  <p className="mono text-zinc-500">
+                    {date} · {time}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+              >
+                <svg
+                  className="w-5 h-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Tabs */}
+            {isOwnPost && (
+              <div className="flex border-b border-zinc-200 dark:border-zinc-800">
+                {[
+                  { id: "content", label: "İÇERİK" },
+                  { id: "comments", label: "YORUMLAR" },
+                  {
+                    id: "tags",
+                    label: "ETİKETLER",
+                    badge: localTags.length > 0 ? localTags.length : null,
+                  },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                    className={`flex-1 px-4 py-2.5 mono uppercase tracking-wider transition-colors relative ${
+                      activeTab === tab.id
+                        ? "text-zinc-900 dark:text-zinc-100"
+                        : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                    }`}
+                  >
+                    {tab.label}
+                    {tab.badge && (
+                      <span className="ml-1 text-zinc-500">{tab.badge}</span>
+                    )}
+                    {activeTab === tab.id && (
+                      <div className="absolute bottom-0 left-0 right-0 h-px bg-zinc-900 dark:bg-zinc-100" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-4 scrollbar-thin">
+              {activeTab === "content" && (
+                <div className="space-y-4">
+                  {contentText ? (
+                    <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed whitespace-pre-wrap">
+                      {contentText}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-zinc-400 italic">İçerik yok</p>
+                  )}
+
+                  {localTags.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                      {localTags.map((tag) => (
+                        <span key={tag.id} className="mono text-zinc-500">
+                          #{tag.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === "comments" && isOwnPost && (
+                <CommentSection
+                  postId={post.id}
+                  currentUserEmail={currentUserEmail}
+                />
+              )}
+
+              {activeTab === "tags" && isOwnPost && (
+                <TagPicker
+                  postId={post.id}
+                  currentTags={localTags}
+                  allTags={allTags}
+                  onTagAdded={onTagAdded}
+                  onTagRemoved={onTagRemoved}
+                />
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-200 dark:border-zinc-800">
+              {isOwnPost ? (
+                <button
+                  onClick={onDelete}
+                  className="mono text-red-500 hover:text-red-600 flex items-center gap-1.5"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  >
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  </svg>
+                  SİL
+                </button>
+              ) : (
+                <span />
+              )}
+
+              {safeUrl(post.post_url) && (
+                <a
+                  href={safeUrl(post.post_url)!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mono text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1.5"
+                >
+                  ORİJİNALİ AÇ
+                  <svg
+                    className="w-4 h-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  >
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                    <polyline points="15 3 21 3 21 9" />
+                    <line x1="10" y1="14" x2="21" y2="3" />
+                  </svg>
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
+  );
+}
+
+// ── PostCard (archive style) ──────────────────────────────────────────────────
 
 interface PostCardProps {
   post: FeedPost;
@@ -522,6 +737,7 @@ interface PostCardProps {
   isSelected?: boolean;
   onToggleSelect?: () => void;
   currentUserId?: string;
+  currentUserEmail?: string;
   isCollaborativeView?: boolean;
   searchQuery?: string;
   ownedCollections?: Collection[];
@@ -540,60 +756,44 @@ export default function PostCard({
   isSelected = false,
   onToggleSelect,
   currentUserId,
+  currentUserEmail = "",
   isCollaborativeView = false,
-  searchQuery,
   ownedCollections,
   onMovePost,
   allTags = [],
   onTagsChanged,
 }: PostCardProps) {
-  const [expanded, setExpanded] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [deleted, setDeleted] = useState(false);
   const [thumbError, setThumbError] = useState(false);
-  const [avatarError, setAvatarError] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showCollectionPicker, setShowCollectionPicker] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [movePending, startMoveTransition] = useTransition();
-  const [showNoteEditor, setShowNoteEditor] = useState(false);
-  const [showPublicNoteEditor, setShowPublicNoteEditor] = useState(false);
-  const [showTagPicker, setShowTagPicker] = useState(false);
-  const [localNote, setLocalNote] = useState(post.note ?? null);
-  const [localPublicNote, setLocalPublicNote] = useState(
-    post.public_note ?? null,
-  );
   const [localTags, setLocalTags] = useState<Tag[]>(post.tags ?? []);
-  const [tagRemovePending, startTagRemoveTransition] = useTransition();
 
   const thumbnailUrl = thumbError
     ? null
     : safeUrl(post.thumbnail_url ?? post.media_urls?.[0] ?? null);
   const contentText = post.content_text ?? "";
-  const isLong = contentText.length > MAX_LEN;
-  const display =
-    isLong && !expanded ? contentText.slice(0, MAX_LEN) + "…" : contentText;
-
-  const contentNode =
-    searchQuery && display ? highlight(display, searchQuery) : display;
+  const displayName = post.author_display_name || post.author_username;
+  const isOwnPost = post.user_id === currentUserId;
+  const postTypeLabel = post.post_type
+    ? (POST_TYPE_LABELS[post.post_type] ?? post.post_type.toUpperCase())
+    : null;
 
   const date = new Date(post.saved_at).toLocaleDateString("tr-TR", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
   });
-  const postTypeLabel = post.post_type
-    ? (POST_TYPE_LABELS[post.post_type] ?? post.post_type)
-    : null;
-  const displayName = post.author_display_name || post.author_username;
-
-  const isOwnPost = post.user_id === currentUserId;
 
   const confirmDelete = () => {
     setShowDeleteDialog(false);
+    setShowDetailModal(false);
     startTransition(async () => {
       const result = await deletePost(post.id);
       if (result.ok) setDeleted(true);
-      else alert("Silme başarısız: " + result.error);
     });
   };
 
@@ -604,9 +804,7 @@ export default function PostCard({
       : null;
     startMoveTransition(async () => {
       const result = await movePost(post.id, collectionId);
-      if (result.ok) {
-        onMovePost?.(post.id, collectionId, col?.name ?? null);
-      }
+      if (result.ok) onMovePost?.(post.id, collectionId, col?.name ?? null);
     });
   };
 
@@ -622,20 +820,10 @@ export default function PostCard({
     onTagsChanged?.(post.id, newTags);
   };
 
-  // Remove tag directly from display (without opening picker)
-  const handleQuickRemoveTag = (tagId: string) => {
-    startTagRemoveTransition(async () => {
-      const result = await removeTagFromPost(post.id, tagId);
-      if (result.ok) {
-        handleTagRemoved(tagId);
-      }
-    });
-  };
-
   if (deleted) return null;
 
   return (
-    <div className="relative">
+    <div className="relative h-full">
       {showDeleteDialog && (
         <DeleteDialog
           onCancel={() => setShowDeleteDialog(false)}
@@ -643,39 +831,45 @@ export default function PostCard({
         />
       )}
 
+      {showDetailModal && (
+        <PostDetailModal
+          post={post}
+          onClose={() => setShowDetailModal(false)}
+          isOwnPost={isOwnPost}
+          allTags={allTags}
+          localTags={localTags}
+          onTagAdded={handleTagAdded}
+          onTagRemoved={handleTagRemoved}
+          thumbnailUrl={thumbnailUrl}
+          onDelete={() => setShowDeleteDialog(true)}
+          currentUserEmail={currentUserEmail}
+        />
+      )}
+
       <article
-        onClick={selectMode ? onToggleSelect : undefined}
-        className={[
-          "group relative flex flex-col bg-white dark:bg-gray-900 border rounded-2xl overflow-hidden transition-all duration-200",
-          selectMode ? "cursor-pointer select-none" : "",
-          isSelected
-            ? "border-indigo-500 dark:border-indigo-400 ring-2 ring-indigo-500/30 dark:ring-indigo-400/30"
-            : "border-gray-200 dark:border-gray-800",
-          isPending
-            ? "opacity-50 pointer-events-none"
-            : !selectMode
-              ? "hover:shadow-lg dark:hover:shadow-black/30 hover:-translate-y-0.5"
-              : "hover:shadow-md",
-        ].join(" ")}
+        onClick={() =>
+          selectMode ? onToggleSelect?.() : setShowDetailModal(true)
+        }
+        className={`group relative flex flex-col archive-card cursor-pointer transition-all duration-150 h-full ${
+          isSelected ? "border-zinc-900 dark:border-zinc-100" : ""
+        } ${isPending ? "opacity-50 pointer-events-none" : "hover:border-zinc-400 dark:hover:border-zinc-600"}`}
       >
-        {/* Select mode checkbox */}
+        {/* Select checkbox */}
         {selectMode && (
           <div
-            className={`absolute top-2.5 left-2.5 z-10 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
+            className={`absolute top-2 left-2 z-10 w-5 h-5 border flex items-center justify-center transition-all ${
               isSelected
-                ? "bg-indigo-500 border-indigo-500 shadow-md"
-                : "bg-white/80 dark:bg-gray-900/80 border-gray-300 dark:border-gray-600 backdrop-blur-sm"
+                ? "bg-zinc-900 dark:bg-zinc-100 border-zinc-900 dark:border-zinc-100"
+                : "bg-white dark:bg-zinc-900 border-zinc-300 dark:border-zinc-700"
             }`}
           >
             {isSelected && (
               <svg
-                className="w-3.5 h-3.5 text-white"
+                className="w-3 h-3 text-white dark:text-zinc-900"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
               >
                 <polyline points="20 6 9 17 4 12" />
               </svg>
@@ -683,520 +877,161 @@ export default function PostCard({
           </div>
         )}
 
-        {/* Single delete button */}
-        {!selectMode &&
-          (!isCollaborativeView || post.user_id === currentUserId) && (
-            <button
-              type="button"
-              onClick={() => setShowDeleteDialog(true)}
-              aria-label="Delete post"
-              className="absolute top-2.5 right-2.5 z-10 opacity-0 group-hover:opacity-100 w-7 h-7 flex items-center justify-center rounded-full bg-red-500 hover:bg-red-600 text-white shadow-md transition-all duration-150"
+        {/* Delete button */}
+        {!selectMode && (!isCollaborativeView || isOwnPost) && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowDeleteDialog(true);
+            }}
+            className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-400 hover:text-red-500 hover:border-red-500 transition-all"
+          >
+            <svg
+              className="w-3.5 h-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
             >
-              <svg
-                className="w-3.5 h-3.5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="3 6 5 6 21 6" />
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                <path d="M10 11v6M14 11v6" />
-                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-              </svg>
-            </button>
-          )}
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        )}
 
         {/* Thumbnail */}
-        {thumbnailUrl ? (
-          <div className="aspect-[4/3] bg-gray-100 dark:bg-gray-800 overflow-hidden relative">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
+        <div className="aspect-square bg-zinc-100 dark:bg-zinc-900 overflow-hidden relative border-b border-zinc-200 dark:border-zinc-800">
+          {thumbnailUrl ? (
             <img
               src={thumbnailUrl}
               alt=""
               onError={() => setThumbError(true)}
-              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
             />
-            <div className="absolute top-2 left-2 flex gap-1.5">
-              {postTypeLabel && !selectMode && (
-                <span className="bg-black/40 backdrop-blur-sm rounded-md px-2 py-0.5 text-[10px] font-semibold text-white uppercase tracking-wide">
-                  {postTypeLabel}
-                </span>
-              )}
-            </div>
-            <div className="absolute bottom-2 left-2 bg-black/40 backdrop-blur-sm rounded-lg p-1">
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-zinc-300 dark:text-zinc-700">
               {post.platform === "instagram" ? (
-                <InstagramIcon className="w-3.5 h-3.5" />
+                <InstagramIcon className="w-10 h-10" />
+              ) : post.platform === "threads" ? (
+                <ThreadsIcon className="w-10 h-10" />
               ) : (
-                <XIcon className="w-3.5 h-3.5 text-white" />
+                <XIcon className="w-10 h-10" />
               )}
             </div>
-          </div>
-        ) : (
-          <div className="aspect-[4/3] bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 flex flex-col items-center justify-center gap-2 px-4">
+          )}
+
+          {/* Type badge */}
+          {postTypeLabel && (
+            <div className="absolute top-2 left-2 mono text-[10px] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-1.5 py-0.5">
+              {postTypeLabel}
+            </div>
+          )}
+
+          {/* Platform icon */}
+          <div className="absolute bottom-2 left-2 w-6 h-6 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center">
             {post.platform === "instagram" ? (
-              <InstagramIcon className="w-8 h-8 opacity-20" />
+              <InstagramIcon className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
+            ) : post.platform === "threads" ? (
+              <ThreadsIcon className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
             ) : (
-              <XIcon className="w-8 h-8 opacity-20 text-gray-500" />
-            )}
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center leading-tight">
-              Görsel yüklenemedi
-            </p>
-            {safeUrl(post.post_url) && (
-              <a
-                href={safeUrl(post.post_url)!}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="text-[10px] font-medium text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1 transition-colors"
-              >
-                Orijinal postu aç
-                <svg
-                  className="w-2.5 h-2.5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                >
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                  <polyline points="15 3 21 3 21 9" />
-                  <line x1="10" y1="14" x2="21" y2="3" />
-                </svg>
-              </a>
+              <XIcon className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
             )}
           </div>
-        )}
+        </div>
 
         {/* Content */}
-        <div className="p-4 flex flex-col gap-3 flex-1">
-          {/* Author */}
-          <div className="flex items-center gap-2.5">
-            {safeUrl(post.author_avatar_url) && !avatarError ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={safeUrl(post.author_avatar_url)!}
-                alt=""
-                onError={() => setAvatarError(true)}
-                className="w-8 h-8 rounded-full object-cover bg-gray-200 dark:bg-gray-700 shrink-0 ring-1 ring-gray-200 dark:ring-gray-700"
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 shrink-0 flex items-center justify-center text-white text-xs font-bold">
-                {displayName?.[0]?.toUpperCase() ?? "?"}
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              {displayName && (
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate leading-tight">
-                  {displayName}
-                </p>
-              )}
-              {post.author_username && (
-                <p className="text-xs text-gray-400 dark:text-gray-500 truncate leading-tight">
-                  @{post.author_username}
-                </p>
-              )}
-            </div>
+        <div className="p-3 flex flex-col h-[130px]">
+          {/* Author + Date */}
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <p className="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate flex-1">
+              @{displayName || "bilinmeyen"}
+            </p>
+            <span className="mono text-zinc-400 shrink-0">{date}</span>
           </div>
 
-          {/* Caption */}
-          {contentText ? (
-            <div className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
-              <p className="whitespace-pre-wrap break-words">{contentNode}</p>
-              {isLong && !selectMode && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpanded(!expanded);
-                  }}
-                  className="mt-1 text-xs text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium"
-                >
-                  {expanded ? "Show less" : "Show more"}
-                </button>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-400 dark:text-gray-600 italic">
-              No caption
-            </p>
-          )}
-
-          {/* Tags display (with hover delete) */}
-          {localTags.length > 0 && !showTagPicker && (
-            <div className="flex flex-wrap gap-1.5">
-              {localTags.map((tag) => (
-                <span
-                  key={tag.id}
-                  className="group/tag inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800/50 transition-colors"
-                >
-                  <svg
-                    className="w-2.5 h-2.5 opacity-60"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-                    <line x1="7" y1="7" x2="7.01" y2="7" />
-                  </svg>
-                  {tag.name}
-                  {isOwnPost && !selectMode && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleQuickRemoveTag(tag.id);
-                      }}
-                      disabled={tagRemovePending}
-                      className="opacity-0 group-hover/tag:opacity-100 -mr-0.5 p-0.5 hover:text-red-500 dark:hover:text-red-400 transition-all disabled:opacity-50"
-                    >
-                      <svg
-                        className="w-2.5 h-2.5"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                      >
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                    </button>
-                  )}
+          {/* Tags */}
+          {localTags.length > 0 && (
+            <div className="flex flex-wrap gap-x-2 gap-y-1 mb-2">
+              {localTags.slice(0, 3).map((tag) => (
+                <span key={tag.id} className="mono text-zinc-400">
+                  #{tag.name}
                 </span>
               ))}
+              {localTags.length > 3 && (
+                <span className="mono text-zinc-400">
+                  +{localTags.length - 3}
+                </span>
+              )}
             </div>
           )}
 
-          {/* Public note preview */}
-          {localPublicNote && !showPublicNoteEditor && (
-            <div
-              className="group/note flex items-start gap-2 rounded-lg px-3 py-2 bg-sky-50/60 dark:bg-sky-950/30 border border-sky-200/60 dark:border-sky-800/40 cursor-pointer hover:border-sky-300/80 dark:hover:border-sky-700/60 transition-colors"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (isOwnPost && !selectMode) setShowPublicNoteEditor(true);
-              }}
-            >
-              <svg
-                className="w-3.5 h-3.5 mt-0.5 shrink-0 text-sky-500/70 dark:text-sky-400/60"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                <circle cx="9" cy="7" r="4" />
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-              </svg>
-              <p className="flex-1 text-xs text-sky-800/80 dark:text-sky-200/70 whitespace-pre-wrap line-clamp-2 leading-relaxed">
-                {localPublicNote}
-              </p>
-            </div>
-          )}
+          {/* Divider */}
+          <div className="border-t border-zinc-100 dark:border-zinc-800 my-1" />
 
-          {/* Private note preview (only for own posts) */}
-          {localNote && isOwnPost && !showNoteEditor && (
-            <div
-              className="group/note flex items-start gap-2 rounded-lg px-3 py-2 bg-violet-50/60 dark:bg-violet-950/30 border border-violet-200/60 dark:border-violet-800/40 cursor-pointer hover:border-violet-300/80 dark:hover:border-violet-700/60 transition-colors"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!selectMode) setShowNoteEditor(true);
-              }}
-            >
-              <svg
-                className="w-3.5 h-3.5 mt-0.5 shrink-0 text-violet-500/70 dark:text-violet-400/60"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-              <p className="flex-1 text-xs text-violet-800/80 dark:text-violet-200/70 whitespace-pre-wrap line-clamp-2 leading-relaxed">
-                {localNote}
-              </p>
-            </div>
-          )}
+          {/* Caption */}
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 line-clamp-2 flex-1">
+            {contentText || <span className="italic">İçerik yok</span>}
+          </p>
 
-          {/* Note editors (inline) */}
-          {showNoteEditor && isOwnPost && !selectMode && (
-            <NoteEditor
-              postId={post.id}
-              initialNote={localNote}
-              noteType="note"
-              onNoteChange={setLocalNote}
-              onClose={() => setShowNoteEditor(false)}
-              label="Kişisel Not"
-              placeholder="Sadece sen görebilirsin..."
-            />
-          )}
+          {/* Divider */}
+          <div className="border-t border-zinc-100 dark:border-zinc-800 my-1" />
 
-          {showPublicNoteEditor && isOwnPost && !selectMode && (
-            <NoteEditor
-              postId={post.id}
-              initialNote={localPublicNote}
-              noteType="public_note"
-              onNoteChange={setLocalPublicNote}
-              onClose={() => setShowPublicNoteEditor(false)}
-              label="Herkese Açık Not"
-              placeholder="Koleksiyon üyeleri görebilir..."
-            />
-          )}
-
-          {/* Tag picker (inline) */}
-          {showTagPicker && isOwnPost && !selectMode && (
-            <TagPicker
-              postId={post.id}
-              currentTags={localTags}
-              allTags={allTags}
-              onTagAdded={handleTagAdded}
-              onTagRemoved={handleTagRemoved}
-              onClose={() => setShowTagPicker(false)}
-            />
-          )}
-
-          {/* Saved date + action buttons */}
+          {/* Collection */}
           <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-400 dark:text-gray-500">{date}</p>
-
-            {/* Note & Tag buttons (only for own posts) */}
-            {isOwnPost && !selectMode && (
-              <div className="flex items-center gap-0.5">
-                {/* Public note button */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowPublicNoteEditor(!showPublicNoteEditor);
-                    setShowNoteEditor(false);
-                    setShowTagPicker(false);
-                  }}
-                  title={
-                    localPublicNote
-                      ? "Herkese açık notu düzenle"
-                      : "Herkese açık not ekle"
-                  }
-                  className={`p-1.5 rounded-md transition-colors ${
-                    localPublicNote
-                      ? "text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/50"
-                      : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                  }`}
-                >
-                  <svg
-                    className="w-3.5 h-3.5"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                    <circle cx="9" cy="7" r="4" />
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                  </svg>
-                </button>
-
-                {/* Private note button */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowNoteEditor(!showNoteEditor);
-                    setShowPublicNoteEditor(false);
-                    setShowTagPicker(false);
-                  }}
-                  title={
-                    localNote ? "Kişisel notu düzenle" : "Kişisel not ekle"
-                  }
-                  className={`p-1.5 rounded-md transition-colors ${
-                    localNote
-                      ? "text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/50"
-                      : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                  }`}
-                >
-                  <svg
-                    className="w-3.5 h-3.5"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                  </svg>
-                </button>
-
-                {/* Tag button */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowTagPicker(!showTagPicker);
-                    setShowNoteEditor(false);
-                    setShowPublicNoteEditor(false);
-                  }}
-                  title="Etiket ekle"
-                  className={`p-1.5 rounded-md transition-colors ${
-                    localTags.length > 0
-                      ? "text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800"
-                      : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                  }`}
-                >
-                  <svg
-                    className="w-3.5 h-3.5"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-                    <line x1="7" y1="7" x2="7.01" y2="7" />
-                  </svg>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-between mt-auto pt-2 border-t border-gray-100 dark:border-gray-800">
-            {/* Collection badge */}
             {!selectMode && ownedCollections && ownedCollections.length > 0 ? (
               <button
-                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowCollectionPicker((v) => !v);
                 }}
                 disabled={movePending}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900 max-w-[140px] hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors disabled:opacity-50"
+                className="mono text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 truncate max-w-[120px]"
               >
-                <span className="truncate">
-                  {post.collections?.name ?? "Koleksiyonsuz"}
-                </span>
-                <svg
-                  className="w-2.5 h-2.5 shrink-0 opacity-60"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                >
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
+                {post.collections?.name ?? "—"}
               </button>
             ) : post.collections?.name ? (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900 truncate max-w-[130px]">
+              <span className="mono text-zinc-400 truncate max-w-[120px]">
                 {post.collections.name}
               </span>
             ) : (
-              <span />
-            )}
-
-            {safeUrl(post.post_url) && !selectMode ? (
-              <a
-                href={safeUrl(post.post_url)!}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 flex items-center gap-1 shrink-0"
-              >
-                View original
-                <svg
-                  className="w-3 h-3"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                >
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                  <polyline points="15 3 21 3 21 9" />
-                  <line x1="10" y1="14" x2="21" y2="3" />
-                </svg>
-              </a>
-            ) : (
-              <span />
+              <span className="mono text-zinc-400">—</span>
             )}
           </div>
         </div>
       </article>
 
-      {/* Collection picker dropdown */}
+      {/* Collection picker */}
       {showCollectionPicker && !selectMode && ownedCollections && (
         <>
           <div
             className="fixed inset-0 z-40"
             onClick={() => setShowCollectionPicker(false)}
           />
-          <div className="absolute bottom-14 left-3 z-50 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl py-1 min-w-[160px]">
+          <div className="absolute bottom-14 left-0 z-50 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 py-1 min-w-[140px]">
             {ownedCollections.map((col) => (
               <button
                 key={col.id}
-                type="button"
                 onClick={() => handleCollectionChange(col.id)}
-                className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors ${
+                  post.collection_id === col.id
+                    ? "text-zinc-900 dark:text-zinc-100 font-medium"
+                    : "text-zinc-600 dark:text-zinc-400"
+                }`}
               >
-                {post.collection_id === col.id ? (
-                  <svg
-                    className="w-3 h-3 shrink-0 text-indigo-500"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                ) : (
-                  <span className="w-3 h-3 shrink-0" />
-                )}
-                <span
-                  className={`truncate ${post.collection_id === col.id ? "font-semibold text-indigo-600 dark:text-indigo-400" : "text-gray-700 dark:text-gray-300"}`}
-                >
-                  {col.name}
-                  {col.is_default ? " ★" : ""}
-                </span>
+                {col.name}
+                {col.is_default && <span className="ml-1">★</span>}
               </button>
             ))}
-            <div className="mx-3 my-0.5 border-t border-gray-100 dark:border-gray-700" />
+            <div className="mx-2 my-1 border-t border-zinc-100 dark:border-zinc-800" />
             <button
-              type="button"
               onClick={() => handleCollectionChange(null)}
-              className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors ${
+                !post.collection_id
+                  ? "text-zinc-900 dark:text-zinc-100 font-medium"
+                  : "text-zinc-500"
+              }`}
             >
-              {!post.collection_id ? (
-                <svg
-                  className="w-3 h-3 shrink-0 text-indigo-500"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                >
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              ) : (
-                <span className="w-3 h-3 shrink-0" />
-              )}
-              <span
-                className={`${!post.collection_id ? "font-semibold text-indigo-600 dark:text-indigo-400" : "text-gray-500 dark:text-gray-400"}`}
-              >
-                Koleksiyonsuz
-              </span>
+              Koleksiyonsuz
             </button>
           </div>
         </>

@@ -34,6 +34,7 @@ const uuidArraySchema = z.array(uuidSchema).min(1, "En az bir post seçilmeli.")
 
 const GetPostsSchema = z.object({
   collectionId: z.string().uuid().optional(),
+  platform: z.enum(["instagram", "x", "threads"]).optional(),
   cursor: z
     .object({
       // Supabase returns timestamptz as ISO-8601 with microseconds + tz offset,
@@ -75,7 +76,7 @@ export async function getPosts(
 
   try {
     const { supabase } = await requireAuth();
-    const { collectionId, cursor } = parsed.data;
+    const { collectionId, platform, cursor } = parsed.data;
 
     // Fetch one extra row to detect whether a next page exists.
     let q = supabase
@@ -86,6 +87,7 @@ export async function getPosts(
       .limit(PAGE_SIZE + 1);
 
     if (collectionId) q = q.eq("collection_id", collectionId);
+    if (platform) q = q.eq("platform", platform);
 
     if (cursor) {
       // Keyset cursor condition:
@@ -303,5 +305,102 @@ export async function updatePostNote(
     return ok(undefined);
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Not kaydedilemedi.");
+  }
+}
+
+// ── Post Comments ─────────────────────────────────────────────────────────────
+
+import type { PostComment } from "@/lib/types";
+
+const commentSchema = z
+  .string()
+  .min(1, "Yorum boş olamaz.")
+  .max(2000, "Yorum en fazla 2000 karakter olabilir.");
+
+/**
+ * Gets all comments for a post.
+ * Users see: their own comments (private + public) + all public comments from others.
+ */
+export async function getPostComments(
+  postId: string,
+): Promise<ActionResult<PostComment[]>> {
+  const parsed = uuidSchema.safeParse(postId);
+  if (!parsed.success) return fail(parsed.error.errors[0].message);
+
+  try {
+    const { supabase } = await requireAuth();
+
+    const { data, error } = await supabase
+      .from("post_comments")
+      .select("*")
+      .eq("post_id", postId)
+      .order("created_at", { ascending: true });
+
+    if (error) return fail(error.message);
+    return ok((data ?? []) as PostComment[]);
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Yorumlar yüklenemedi.");
+  }
+}
+
+/**
+ * Adds a new comment to a post.
+ */
+export async function addPostComment(
+  postId: string,
+  content: string,
+  isPublic: boolean,
+): Promise<ActionResult<PostComment>> {
+  const postParsed = uuidSchema.safeParse(postId);
+  if (!postParsed.success) return fail(postParsed.error.errors[0].message);
+
+  const contentParsed = commentSchema.safeParse(content);
+  if (!contentParsed.success)
+    return fail(contentParsed.error.errors[0].message);
+
+  try {
+    const { supabase, session } = await requireAuth();
+
+    const { data, error } = await supabase
+      .from("post_comments")
+      .insert({
+        post_id: postId,
+        user_id: session.user.id,
+        user_email: session.user.email ?? "unknown",
+        content: contentParsed.data.trim(),
+        is_public: isPublic,
+      })
+      .select()
+      .single();
+
+    if (error) return fail(error.message);
+    return ok(data as PostComment);
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Yorum eklenemedi.");
+  }
+}
+
+/**
+ * Deletes a comment. Only the comment author can delete their own comments.
+ */
+export async function deletePostComment(
+  commentId: string,
+): Promise<ActionResult> {
+  const parsed = uuidSchema.safeParse(commentId);
+  if (!parsed.success) return fail(parsed.error.errors[0].message);
+
+  try {
+    const { supabase, session } = await requireAuth();
+
+    const { error } = await supabase
+      .from("post_comments")
+      .delete()
+      .eq("id", commentId)
+      .eq("user_id", session.user.id);
+
+    if (error) return fail(error.message);
+    return ok(undefined);
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Yorum silinemedi.");
   }
 }

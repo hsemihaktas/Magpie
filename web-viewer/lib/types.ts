@@ -16,8 +16,8 @@ export interface SavedPost {
   id: string;
   user_id: string;
   post_url: string | null;
-  post_type: "post" | "reel" | "story" | "tweet" | null;
-  platform: "instagram" | "x" | null;
+  post_type: "post" | "reel" | "story" | "tweet" | "thread" | null;
+  platform: "instagram" | "x" | "threads" | null;
   author_username: string | null;
   author_display_name: string | null;
   author_avatar_url: string | null;
@@ -125,4 +125,20 @@ export interface ActiveInvite {
   expires_at: string;
   created_by: string;
   creator_email: string;
+}
+
+// ── Comments ─────────────────────────────────────────────────────────────────
+
+/**
+ * A comment on a post, can be private (only visible to author) or public
+ * (visible to all collection members).
+ */
+export interface PostComment {
+  id: string;
+  post_id: string;
+  user_id: string;
+  user_email: string;
+  content: string;
+  is_public: boolean;
+  created_at: string;
 }

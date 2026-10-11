@@ -4,19 +4,21 @@ import { Suspense } from "react";
 import { HeaderWrapper } from "@/components/HeaderWrapper";
 import { UserEmail } from "@/components/UserEmail";
 import { SettingsButton } from "@/components/SettingsButton";
+import NavSearchBar from "@/components/NavSearchBar";
 import { createServerClient } from "@/lib/supabase";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Magpie",
+  title: "Magpie Archive",
   description: "Your personal social content archive",
 };
 
-/** Reads the session server-side and passes email to the client SettingsButton. */
 async function SettingsButtonWithEmail() {
   try {
     const supabase = createServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user?.email) return null;
     return <SettingsButton email={user.email} />;
   } catch {
@@ -24,11 +26,23 @@ async function SettingsButtonWithEmail() {
   }
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Prevent theme flash */}
+        <link
+          rel="preconnect"
+          href="https://fonts.googleapis.com"
+          crossOrigin="anonymous"
+        />
+        <link
+          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap"
+          rel="stylesheet"
+        />
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -41,18 +55,35 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className="min-h-screen flex flex-col" suppressHydrationWarning>
+      <body
+        className="min-h-screen flex flex-col antialiased"
+        suppressHydrationWarning
+      >
         <HeaderWrapper>
-          <header className="sticky top-0 z-40 h-14 flex items-center px-6 border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/80 backdrop-blur-sm">
+          <header className="sticky top-0 z-40 h-12 flex items-center gap-6 px-6 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
             {/* Logo */}
-            <div className="flex items-center gap-2.5 flex-1">
-              <Image src="/logo-96.png" alt="Magpie" width={28} height={28} className="rounded-lg" priority />
-              <span className="font-semibold text-gray-900 dark:text-white tracking-tight">Magpie</span>
+            <div className="flex items-center gap-3 shrink-0">
+              <Image
+                src="/logo-96.png"
+                alt="Magpie"
+                width={20}
+                height={20}
+                className="opacity-80"
+                priority
+              />
+              <span className="mono text-[11px] font-semibold tracking-[0.15em] text-zinc-900 dark:text-zinc-100 uppercase">
+                Magpie Archive
+              </span>
             </div>
 
+            {/* Search bar - center */}
+            <Suspense fallback={null}>
+              <NavSearchBar />
+            </Suspense>
+
             {/* Right side */}
-            <div className="flex items-center gap-2">
-              <Suspense fallback={<div className="w-9 h-9" />}>
+            <div className="flex items-center gap-2 shrink-0 ml-auto">
+              <Suspense fallback={<div className="w-8 h-8" />}>
                 <SettingsButtonWithEmail />
               </Suspense>
               <UserEmail />

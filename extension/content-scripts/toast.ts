@@ -186,6 +186,16 @@ export interface ToastOptions {
    * invokes this callback (Requirement 11.3, 11.4).
    */
   onChangeCollection?: () => void;
+  /**
+   * Post ID of the saved post, used for deep linking to add tags.
+   * When provided along with webViewerUrl, an "Add tag" link is shown.
+   */
+  postId?: string;
+  /**
+   * Base URL of the Magpie web viewer (e.g., "https://magpie.app").
+   * Used to construct the deep link for adding tags.
+   */
+  webViewerUrl?: string;
 }
 
 /**
@@ -239,6 +249,27 @@ export function showToast(options: ToastOptions): void {
     });
 
     toast.appendChild(changeBtn);
+  }
+
+  // "Add tag" link — opens web viewer with post focused for tagging
+  if (options.postId && options.webViewerUrl) {
+    const tagLink = document.createElement("a");
+    tagLink.className = "magpie-toast__change";
+    tagLink.href = `${options.webViewerUrl}/feed?post=${options.postId}`;
+    tagLink.target = "_blank";
+    tagLink.rel = "noopener noreferrer";
+    tagLink.textContent = "Add tag";
+    tagLink.style.textDecoration = "none";
+
+    tagLink.addEventListener("click", () => {
+      if (dismissTimer !== null) {
+        clearTimeout(dismissTimer);
+        dismissTimer = null;
+      }
+      toast.remove();
+    });
+
+    toast.appendChild(tagLink);
   }
 
   // ── 4. Append to document body ──────────────────────────────────────────

@@ -136,6 +136,10 @@ interface PostCardListProps {
   searchQuery?: string;
   /** Owned collections passed through to each PostCard for the move-to-collection picker. */
   ownedCollections?: import("@/lib/types").Collection[];
+  /** All tags for autocomplete in PostCard. */
+  allTags?: import("@/lib/types").Tag[];
+  /** Active tag filter ID. */
+  activeTagId?: string;
 }
 
 export default function PostCardList({
@@ -146,10 +150,14 @@ export default function PostCardList({
   collectionId,
   searchQuery,
   ownedCollections,
+  allTags = [],
+  activeTagId,
 }: PostCardListProps) {
   // ── Post state ───────────────────────────────────────────────────────────────
   const [posts, setPosts] = useState(initialPosts);
-  const [cursor, setCursor] = useState<PostCursor | null>(initialCursor ?? null);
+  const [cursor, setCursor] = useState<PostCursor | null>(
+    initialCursor ?? null,
+  );
   const [hasMore, setHasMore] = useState(initialCursor !== null);
   const [loading, setLoading] = useState(false);
   // Ref prevents duplicate in-flight requests when observer fires repeatedly.
@@ -159,11 +167,12 @@ export default function PostCardList({
 
   // Auto-refresh when switching back to this tab (e.g. after saving via extension)
   useEffect(() => {
-    const onVisibility = () => { if (!document.hidden) router.refresh(); };
+    const onVisibility = () => {
+      if (!document.hidden) router.refresh();
+    };
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [router]);
-
 
   // ── Sync on URL navigation ───────────────────────────────────────────────────
   // When the server re-renders (collection / search param change), reset all
@@ -205,7 +214,7 @@ export default function PostCardList({
         if (entry.isIntersecting) loadMore();
       },
       // Pre-load next page when the sentinel is 400px below the viewport.
-      { rootMargin: "0px 0px 400px 0px" }
+      { rootMargin: "0px 0px 400px 0px" },
     );
 
     observer.observe(sentinel);
@@ -262,17 +271,25 @@ export default function PostCardList({
     collectionId: string | null,
     collectionName: string | null,
   ) => {
-    setPosts(prev =>
-      prev.map(p =>
+    setPosts((prev) =>
+      prev.map((p) =>
         p.id !== postId
           ? p
           : {
               ...p,
               collection_id: collectionId,
               collections: collectionName ? { name: collectionName } : null,
-            }
-      )
+            },
+      ),
     );
+  };
+
+  // ── Tag change handler ──────────────────────────────────────────────────────
+  const handleTagsChanged = (
+    postId: string,
+    tags: import("@/lib/types").Tag[],
+  ) => {
+    setPosts((prev) => prev.map((p) => (p.id !== postId ? p : { ...p, tags })));
   };
 
   // ── Empty state ──────────────────────────────────────────────────────────────
@@ -389,6 +406,8 @@ export default function PostCardList({
               searchQuery={searchQuery}
               ownedCollections={ownedCollections}
               onMovePost={handleMovePost}
+              allTags={allTags}
+              onTagsChanged={handleTagsChanged}
             />
           </li>
         ))}

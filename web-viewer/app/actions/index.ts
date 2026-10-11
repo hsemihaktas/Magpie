@@ -7,3 +7,4 @@ export * from "./collections";
 export * from "./sharing";
 export * from "./members";
 export * from "./auth";
+export * from "./tags";

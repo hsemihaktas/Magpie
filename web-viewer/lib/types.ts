@@ -31,6 +31,30 @@ export interface SavedPost {
   thumbnail_url?: string | null;
   /** Canonical URL for cross-format deduplication (migration 019). */
   canonical_url?: string | null;
+  /** Personal note attached to the post (migration 023). */
+  note?: string | null;
+  /** Public note visible to all collection members (migration 025). */
+  public_note?: string | null;
+}
+
+// ── Tags ─────────────────────────────────────────────────────────────────────
+
+/**
+ * A user-defined tag for organizing posts.
+ * Tags are private to the user who created them.
+ */
+export interface Tag {
+  id: string;
+  user_id: string;
+  name: string;
+  created_at: string;
+}
+
+/**
+ * A tag with its usage count for display in the sidebar.
+ */
+export interface TagWithCount extends Tag {
+  post_count: number;
 }
 
 /**
@@ -53,13 +77,13 @@ export interface Collection {
  */
 export interface PostCursor {
   saved_at: string; // timestamptz ISO string as returned by Supabase
-  id: string;       // UUID of the last post on the current page
+  id: string; // UUID of the last post on the current page
 }
 
 // ── Query result type ────────────────────────────────────────────────────────
 
 /**
- * A SavedPost enriched with the joined collection name.
+ * A SavedPost enriched with the joined collection name and tags.
  *
  * Returned by the Supabase query:
  *   `supabase.from('saved_posts').select('*, collections(name)')`
@@ -69,6 +93,8 @@ export interface PostCursor {
  */
 export interface FeedPost extends SavedPost {
   collections: { name: string } | null;
+  /** Tags attached to this post by the current user (populated client-side). */
+  tags?: Tag[];
 }
 
 /** A collection shared with the current user by another owner. */

@@ -2,13 +2,14 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useState, useRef, useTransition } from "react";
-import type { Collection, SharedCollection } from "@/lib/types";
+import type { Collection, SharedCollection, TagWithCount } from "@/lib/types";
 import {
   renameCollection,
   setDefaultCollection,
   leaveCollection,
 } from "@/app/actions";
 import dynamic from "next/dynamic";
+import TagFilter from "@/components/TagFilter";
 
 const ShareModal = dynamic(() => import("@/components/ShareModal"), {
   ssr: false,
@@ -26,6 +27,8 @@ interface CollectionFilterProps {
   ownedCollections: Collection[];
   sharedCollections: SharedCollection[];
   activeId?: string;
+  tags?: TagWithCount[];
+  activeTagId?: string;
 }
 
 function CollectionItem({
@@ -411,6 +414,8 @@ export default function CollectionFilter({
   ownedCollections,
   sharedCollections,
   activeId,
+  tags = [],
+  activeTagId,
 }: CollectionFilterProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -519,6 +524,9 @@ export default function CollectionFilter({
             </button>
           </div>
         </nav>
+
+        {/* Tags section */}
+        <TagFilter tags={tags} activeTagId={activeTagId} />
       </aside>
 
       {/* Modals */}

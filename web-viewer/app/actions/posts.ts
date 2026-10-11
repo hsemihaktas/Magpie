@@ -68,7 +68,7 @@ export type GetPostsResult = {
  *   - feed/page.tsx (server) for the initial page load
  */
 export async function getPosts(
-  params: z.infer<typeof GetPostsSchema>
+  params: z.infer<typeof GetPostsSchema>,
 ): Promise<ActionResult<GetPostsResult>> {
   const parsed = GetPostsSchema.safeParse(params);
   if (!parsed.success) return fail(parsed.error.errors[0].message);
@@ -95,7 +95,7 @@ export async function getPosts(
       // URLSearchParams will percent-encode '+' in the tz offset → '%2B',
       // which PostgREST decodes back to a valid timestamptz literal.
       q = q.or(
-        `saved_at.lt.${cursor.saved_at},and(saved_at.eq.${cursor.saved_at},id.lt.${cursor.id})`
+        `saved_at.lt.${cursor.saved_at},and(saved_at.eq.${cursor.saved_at},id.lt.${cursor.id})`,
       );
     }
 
@@ -170,7 +170,10 @@ export async function deletePost(postId: string): Promise<ActionResult> {
     if (post) {
       const paths = collectStoragePaths(post);
       if (paths.length > 0)
-        await supabase.storage.from("thumbnails").remove(paths).catch(() => {});
+        await supabase.storage
+          .from("thumbnails")
+          .remove(paths)
+          .catch(() => {});
     }
 
     revalidatePath("/feed");
@@ -207,7 +210,10 @@ export async function deletePosts(postIds: string[]): Promise<ActionResult> {
     if (posts?.length) {
       const storagePaths = posts.flatMap(collectStoragePaths);
       if (storagePaths.length > 0)
-        await supabase.storage.from("thumbnails").remove(storagePaths).catch(() => {});
+        await supabase.storage
+          .from("thumbnails")
+          .remove(storagePaths)
+          .catch(() => {});
     }
 
     revalidatePath("/feed");
@@ -249,5 +255,53 @@ export async function movePost(
     return ok(undefined);
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Taşıma başarısız.");
+  }
+}
+
+// ── updatePostNote ────────────────────────────────────────────────────────────
+
+const noteSchema = z
+  .string()
+  .max(2000, "Not en fazla 2000 karakter olabilir.")
+  .nullable();
+
+type NoteType = "note" | "public_note";
+
+/**
+ * Updates a note on a post (private or public).
+ * Only the post owner can update notes.
+ */
+export async function updatePostNote(
+  postId: string,
+  note: string | null,
+  noteType: NoteType = "note",
+): Promise<ActionResult> {
+  const postParsed = uuidSchema.safeParse(postId);
+  if (!postParsed.success) return fail(postParsed.error.errors[0].message);
+
+  const noteParsed = noteSchema.safeParse(note);
+  if (!noteParsed.success) return fail(noteParsed.error.errors[0].message);
+
+  if (noteType !== "note" && noteType !== "public_note") {
+    return fail("Geçersiz not tipi.");
+  }
+
+  try {
+    const { supabase, session } = await requireAuth();
+
+    // Trim and normalize empty strings to null
+    const normalizedNote = noteParsed.data?.trim() || null;
+
+    const { error } = await supabase
+      .from("saved_posts")
+      .update({ [noteType]: normalizedNote })
+      .eq("id", postId)
+      .eq("user_id", session.user.id);
+
+    if (error) return fail(error.message);
+    // Don't revalidate on note changes to avoid jarring UX during typing
+    return ok(undefined);
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Not kaydedilemedi.");
   }
 }

@@ -58,6 +58,14 @@ web arayüzünden dilediğin zaman gözbat. Paylaş, ortak çalış.
 - **Koleksiyon filtreleme** — sol kenar çubuğundan tek tıkla, aramayla birlikte çalışır
 - **Karanlık mod** — sistem tercihin otomatik uygulanır
 
+### Etiketler & Notlar
+
+- **Etiket sistemi** — postlarına özel etiketler ekle, aynı etikete sahip postları filtrele
+- **Etiket filtreleme** — kenar çubuğundan etikete tıkla, tekrar tıkla filtreyi kaldır (toggle)
+- **Kişisel not** — 🔒 her posta kendine özel not ekle, sadece sen görürsün
+- **Paylaşılan not** — 👥 ortak koleksiyonlarda herkesin görebildiği not alanı
+- **Arama entegrasyonu** — notlar da full-text search kapsamında indekslenir
+
 ### Paylaşım & İşbirliği
 
 - **Paylaşımlı Koleksiyon** — tek kullanımlık 24 saatlik davet kodu, sadece okuma erişimi
@@ -168,17 +176,19 @@ magpie/
 |   +-- app/
 |   |   +-- feed/page.tsx             Cursor pagination + FTS
 |   |   +-- actions/
-|   |       +-- posts.ts              getPosts, deletePost, deletePosts
+|   |       +-- posts.ts              getPosts, deletePost, deletePosts, updatePostNote
 |   |       +-- collections.ts
 |   |       +-- sharing.ts
 |   |       +-- members.ts
+|   |       +-- tags.ts               getTags, createTag, addTagToPost, removeTagFromPost
 |   |       +-- auth.ts
 |   |       +-- index.ts              Barrel re-export
 |   +-- components/
 |   |   +-- PostCardList.tsx          IntersectionObserver infinite scroll
-|   |   +-- PostCard.tsx              Arama vurgulaması
+|   |   +-- PostCard.tsx              Arama vurgulaması + etiket & not editörü
 |   |   +-- SearchBar.tsx             300ms debounce, URL-sync
-|   |   +-- CollectionFilter.tsx
+|   |   +-- CollectionFilter.tsx      Koleksiyon & etiket filtresi
+|   |   +-- TagFilter.tsx             Etiket filtreleme (toggle davranışı)
 |   |   +-- ShareModal.tsx, JoinCollectionModal.tsx, ManageMembersModal.tsx
 |   +-- lib/
 |       +-- supabase.ts
@@ -188,7 +198,7 @@ magpie/
 |       +-- invite-code.ts
 |
 +-- supabase/
-    +-- migrations/                   001 -> 020
+    +-- migrations/                   001 -> 025
     |   +-- 001_collections_table.sql
     |   +-- 002_saved_posts_table.sql
     |   +-- 003-004_rls_and_storage.sql
@@ -200,6 +210,10 @@ magpie/
     |   +-- 018_security_hardening.sql
     |   +-- 019_canonical_url.sql
     |   +-- 020_pagination_and_fts.sql
+    |   +-- 021-022_various_fixes.sql
+    |   +-- 023_tags_and_notes.sql        -- etiket & kişisel not
+    |   +-- 024_search_vector_with_note.sql
+    |   +-- 025_public_note.sql           -- paylaşılan not
     +-- tests/
         +-- 01_rls_collections_and_posts.sql
         +-- 02_rls_invite_codes.sql
@@ -270,6 +284,10 @@ npm run build   # production check
 | Birden fazla sil            | **Seç** → kartlara tıkla → **Sil**                   |
 | Koleksiyona filtrele        | Sol kenarda koleksiyon adına tıkla                   |
 | Arama                       | Üstteki arama çubuğu (300ms debounce, URL'ye yansır) |
+| Etiket ekle                 | Kart üzerinde etiket ikonu → yeni veya mevcut etiket |
+| Etikete göre filtrele       | Kenar çubuğunda etikete tıkla (toggle)               |
+| Kişisel not ekle            | Kart üzerinde 🔒 ikonu → not yaz                     |
+| Paylaşılan not ekle         | Kart üzerinde 👥 ikonu → herkese açık not            |
 | Koleksiyon paylaş           | Paylaş ikonu → kodu kopyala                          |
 | Koleksiyona katıl           | Kenar çubuğu altı → **Koleksiyona Katıl**            |
 
@@ -307,12 +325,19 @@ saved_posts (
   author_username, author_display_name, author_avatar_url,
   content_text, media_urls, thumbnail_url,
   post_timestamp, saved_at, raw_metadata,
-  search_vector tsvector GENERATED ALWAYS AS (  -- GIN index (migration 020)
+  note TEXT,                               -- kişisel not (migration 023)
+  public_note TEXT,                        -- paylaşılan not (migration 025)
+  search_vector tsvector GENERATED ALWAYS AS (  -- GIN index (migration 020, 024)
     setweight(to_tsvector('simple', coalesce(content_text, '')), 'A') ||
     setweight(to_tsvector('simple', coalesce(author_username, '')), 'B') ||
-    setweight(to_tsvector('simple', coalesce(author_display_name, '')), 'B')
+    setweight(to_tsvector('simple', coalesce(author_display_name, '')), 'B') ||
+    setweight(to_tsvector('simple', coalesce(note, '')), 'C')
   ) STORED
 )
+
+tags (id UUID, user_id UUID, name TEXT, created_at)  -- kullanıcıya özel etiketler
+
+post_tags (post_id UUID, tag_id UUID)                 -- many-to-many ilişki
 
 collection_invites (id, collection_id, created_by, code CHAR(8) UNIQUE,
                     grants_role TEXT, expires_at, used_at, used_by)
@@ -331,6 +356,9 @@ collection_members (id, collection_id, member_user_id,
 | `idx_sp_collection_cursor (collection_id, saved_at DESC, id DESC)` | Cursor pagination — koleksiyon filtreli |
 | `idx_sp_search_vector` GIN                                         | Full-text search                        |
 | `uq_saved_posts_user_canonical`                                    | Canonical URL dedup                     |
+| `idx_tags_user_id`                                                 | Kullanıcının etiketleri                 |
+| `idx_post_tags_post_id`                                            | Post'un etiketleri                      |
+| `idx_post_tags_tag_id`                                             | Etikete göre postlar                    |
 
 ### RLS Politikaları
 
@@ -340,6 +368,8 @@ collection_members (id, collection_id, member_user_id,
 | `saved_posts`        | Sahip: tam · viewer: SELECT · collaborator: SELECT + INSERT/DELETE (kendi) |
 | `collection_invites` | Sahip: SELECT/INSERT · Herkese: tek kullanımlık redeem                     |
 | `collection_members` | Üye: kendi · Sahip: koleksiyonundaki hepsi                                 |
+| `tags`               | Yalnızca sahibi: tam erişim                                                |
+| `post_tags`          | Sahip: tam · viewer: SELECT · collaborator: SELECT + INSERT/DELETE (kendi) |
 
 ---
 

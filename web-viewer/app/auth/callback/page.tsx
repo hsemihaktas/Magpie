@@ -19,10 +19,26 @@ export default function AuthCallbackPage() {
 
     // Get the redirect destination from localStorage (set by login page)
     // Falls back to /feed if not set
+    // Also handles share target params for PWA share flow
     const getRedirectUrl = (): string => {
       try {
         const next = localStorage.getItem("auth_redirect_next");
+        const shareUrl = localStorage.getItem("auth_share_url");
+        const shareText = localStorage.getItem("auth_share_text");
+
+        // Clean up
         localStorage.removeItem("auth_redirect_next");
+        localStorage.removeItem("auth_share_url");
+        localStorage.removeItem("auth_share_text");
+
+        // If we have share params, redirect to share-target with them
+        if (next === "/share-target" && shareUrl) {
+          const params = new URLSearchParams();
+          params.set("url", shareUrl);
+          if (shareText) params.set("text", shareText);
+          return `/share-target?${params.toString()}`;
+        }
+
         // Validate: must start with / and not be an external URL
         if (next && next.startsWith("/") && !next.startsWith("//")) {
           return next;

@@ -14,6 +14,7 @@ web arayüzünden dilediğin zaman gözat. Paylaş, ortak çalış, yorum bırak
 ![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)
 ![Supabase](https://img.shields.io/badge/Supabase-Postgres+Auth+RLS-3fcf8e?logo=supabase)
 ![Chrome MV3](https://img.shields.io/badge/Chrome_Extension-MV3-4285f4?logo=googlechrome&logoColor=white)
+![PWA](https://img.shields.io/badge/PWA-Installable-5a0fc8?logo=pwa)
 
 [![CI](https://github.com/hsemihaktas/Magpie/actions/workflows/ci.yml/badge.svg)](https://github.com/hsemihaktas/Magpie/actions/workflows/ci.yml)
 [![Supabase RLS Tests](https://github.com/hsemihaktas/Magpie/actions/workflows/supabase.yml/badge.svg)](https://github.com/hsemihaktas/Magpie/actions/workflows/supabase.yml)
@@ -50,12 +51,16 @@ web arayüzünden dilediğin zaman gözat. Paylaş, ortak çalış, yorum bırak
 ### Web Görüntüleyici
 
 - **Minimalist tasarım** — Linear/Raycast ilhamıyla ultra-minimal arayüz
+- **PWA desteği** — ana ekrana ekle, mobilde uygulama gibi kullan
+- **URL ile post ekleme** — uzantı olmadan da link yapıştırarak kaydet
+- **Otomatik metadata çekme** — X postları için görsel ve metin otomatik alınır
 - **Sonsuz kaydırma** — cursor tabanlı pagination
 - **Tam metin arama** — caption, yazar ve notlarda arama
 - **Platform filtreleme** — Instagram, X veya Threads'e göre filtrele
 - **Koleksiyon yönetimi** — oluştur, yeniden adlandır, varsayılan belirle, sil
 - **Toplu işlemler** — birden fazla postu seç ve sil
 - **Karanlık mod** — sistem tercihine göre otomatik
+- **Mobil uyumlu** — responsive tasarım, mobil sidebar
 
 ### Etiketler & Yorumlar
 
@@ -72,6 +77,13 @@ web arayüzünden dilediğin zaman gözat. Paylaş, ortak çalış, yorum bırak
 - **Ortak Koleksiyon** — post ekleyebilen, yorum yazabilen ortaklar davet et
 - **Üye yönetimi** — istediğin zaman erişimi iptal et
 - **RLS koruması** — tüm yetkiler veritabanı seviyesinde kontrol edilir
+
+### PWA & Mobil
+
+- **Ana ekrana ekle** — tarayıcıdan yükle, uygulama gibi aç
+- **Share Target (Android)** — mobilde "Paylaş" menüsünden direkt kaydet
+- **Offline hazır** — service worker ile temel önbellekleme
+- **Mobil sidebar** — hamburger menü ile koleksiyon erişimi
 
 ---
 
@@ -126,12 +138,26 @@ npm run dev
 
 ## Kullanım
 
-### Post Kaydetme
+### Post Kaydetme (Uzantı)
 
 1. Instagram, X veya Threads'te bir postun üzerine gel
 2. Sağ üst köşede beliren **arşiv butonuna** tıkla
 3. İlk kullanımda koleksiyon seçici açılır
 4. Sonraki kaydetmelerde varsayılan koleksiyona gider
+
+### Post Kaydetme (URL ile)
+
+1. Web görüntüleyicisinde **URL İLE EKLE** butonuna tıkla
+2. Instagram, X veya Threads post linkini yapıştır
+3. Platform otomatik algılanır, koleksiyon seç
+4. **Kaydet** — X postları için görsel ve metin otomatik çekilir
+
+### Mobilde Kaydetme (Android)
+
+1. Magpie'yi ana ekrana ekle (PWA olarak yükle)
+2. Instagram veya X uygulamasında bir post aç
+3. **Paylaş** → **Magpie** seç
+4. Giriş yaptıysan direkt kaydedilir
 
 ### Web Görüntüleyici
 
@@ -144,6 +170,7 @@ npm run dev
 | Etiket ekle          | Kart üzerinde etiket ikonuna tıkla        |
 | Yorum ekle           | Kart detayında yorum alanını kullan       |
 | Toplu silme          | **Seç** → kartlara tıkla → **Sil**        |
+| URL ile ekle         | **URL İLE EKLE** → link yapıştır          |
 
 ---
 
@@ -170,6 +197,24 @@ cd web-viewer && npm run dev
 # Test
 cd extension && npm test
 supabase test db
+```
+
+### Proje Yapısı
+
+```
+├── extension/           # Chrome uzantısı (MV3)
+│   ├── background/      # Service worker
+│   ├── content-scripts/ # Platform adaptörleri
+│   ├── popup/           # Uzantı popup UI
+│   └── shared/          # Paylaşılan tipler ve yardımcılar
+│
+├── web-viewer/          # Next.js web uygulaması
+│   ├── app/             # App router sayfaları
+│   ├── components/      # React bileşenleri
+│   ├── lib/             # Yardımcı fonksiyonlar
+│   └── public/          # Statik dosyalar (PWA manifest, SW)
+│
+└── supabase/            # Veritabanı migrasyonları ve testler
 ```
 
 ---

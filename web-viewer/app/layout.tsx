@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Image from "next/image";
 import { Suspense } from "react";
 import { JetBrains_Mono } from "next/font/google";
@@ -19,6 +19,20 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Magpie Archive",
   description: "Your personal social content archive",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Magpie",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
+  themeColor: "#09090b",
 };
 
 async function SettingsButtonWithEmail() {
@@ -42,6 +56,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={jetbrainsMono.variable} suppressHydrationWarning>
       <head>
+        {/* Theme detection (before paint) */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -53,6 +68,27 @@ export default function RootLayout({
             `,
           }}
         />
+        {/* PWA Service Worker Registration */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').catch(function(e) {
+                    console.log('SW registration failed:', e);
+                  });
+                });
+              }
+            `,
+          }}
+        />
+        {/* iOS PWA meta tags */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta
+          name="apple-mobile-web-app-status-bar-style"
+          content="black-translucent"
+        />
+        <link rel="apple-touch-icon" href="/logo-512.png" />
       </head>
       <body
         className="min-h-screen flex flex-col antialiased"

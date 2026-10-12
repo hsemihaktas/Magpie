@@ -8,10 +8,15 @@ import React, {
   useTransition,
   useMemo,
 } from "react";
+import dynamic from "next/dynamic";
 import { ModalPortal } from "@/components/ModalPortal";
 import type { FeedPost, PostCursor } from "@/lib/types";
 import PostCard from "@/components/PostCard";
 import { deletePosts, getPosts } from "@/app/actions";
+
+const AddByUrlModal = dynamic(() => import("@/components/AddByUrlModal"), {
+  ssr: false,
+});
 
 function BulkDeleteDialog({
   count,
@@ -247,6 +252,7 @@ export default function PostCardList({
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showDialog, setShowDialog] = useState(false);
+  const [showAddByUrl, setShowAddByUrl] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const toggleSelect = (id: string) => {
@@ -340,26 +346,48 @@ export default function PostCardList({
         İPTAL
       </button>
     </div>
-  ) : posts.length > 0 ? (
-    <button
-      onClick={() => setSelectMode(true)}
-      className="mono text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1.5 transition-colors"
-    >
-      <svg
-        className="w-3.5 h-3.5"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
+  ) : (
+    <div className="flex items-center gap-3">
+      {/* URL ile Ekle butonu */}
+      <button
+        onClick={() => setShowAddByUrl(true)}
+        className="mono text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1.5 transition-colors"
       >
-        <rect x="3" y="3" width="7" height="7" />
-        <rect x="14" y="3" width="7" height="7" />
-        <rect x="3" y="14" width="7" height="7" />
-        <rect x="14" y="14" width="7" height="7" />
-      </svg>
-      SEÇ
-    </button>
-  ) : null;
+        <svg
+          className="w-3.5 h-3.5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        >
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+        </svg>
+        <span className="hidden sm:inline">URL İLE EKLE</span>
+        <span className="sm:hidden">+</span>
+      </button>
+      {posts.length > 0 && (
+        <button
+          onClick={() => setSelectMode(true)}
+          className="mono text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1.5 transition-colors"
+        >
+          <svg
+            className="w-3.5 h-3.5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <rect x="3" y="3" width="7" height="7" />
+            <rect x="14" y="3" width="7" height="7" />
+            <rect x="3" y="14" width="7" height="7" />
+            <rect x="14" y="14" width="7" height="7" />
+          </svg>
+          SEÇ
+        </button>
+      )}
+    </div>
+  );
 
   // Empty state
   if (posts.length === 0 && !loading) {
@@ -455,6 +483,18 @@ export default function PostCardList({
           count={selectedIds.size}
           onCancel={() => setShowDialog(false)}
           onConfirm={confirmBulkDelete}
+        />
+      )}
+
+      {showAddByUrl && ownedCollections && (
+        <AddByUrlModal
+          collections={ownedCollections}
+          onClose={() => setShowAddByUrl(false)}
+          onSuccess={() => {
+            // Sayfayı router ile yenile (soft navigation)
+            // revalidatePath server action'da çağrılıyor, sadece modal'ı kapat
+            setShowAddByUrl(false);
+          }}
         />
       )}
     </>

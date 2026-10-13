@@ -1,9 +1,18 @@
 "use client";
 
+import { broadcastLogout } from "@/components/AuthSyncProvider";
+
 export default function SignOutButton({ email }: { email?: string }) {
+  const handleSignOut = () => {
+    // Broadcast logout to other tabs before navigating
+    broadcastLogout();
+    // Navigate to signout route
+    window.location.href = "/auth/signout";
+  };
+
   return (
-    <a
-      href="/auth/signout"
+    <button
+      onClick={handleSignOut}
       className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-100 transition-colors"
       title={email ? `${email} olarak giriş yapıldı — çıkış yap` : "Çıkış yap"}
     >
@@ -26,6 +35,6 @@ export default function SignOutButton({ email }: { email?: string }) {
         <polyline points="16 17 21 12 16 7" />
         <line x1="21" y1="12" x2="9" y2="12" />
       </svg>
-    </a>
+    </button>
   );
 }

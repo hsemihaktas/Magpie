@@ -61,6 +61,23 @@ export default async function LoginPage({
         <p className="text-center mono text-zinc-400">
           Sadece sen kayıtlı içeriklerini görebilirsin.
         </p>
+
+        {/* Legal links */}
+        <div className="flex items-center justify-center gap-4 pt-4">
+          <a
+            href="/privacy"
+            className="mono text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+          >
+            Gizlilik
+          </a>
+          <span className="text-zinc-300 dark:text-zinc-700">·</span>
+          <a
+            href="/terms"
+            className="mono text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+          >
+            Kullanım Koşulları
+          </a>
+        </div>
       </div>
     </div>
   );

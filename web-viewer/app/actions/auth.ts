@@ -14,7 +14,8 @@ import { ok, fail } from "@/lib/action-result";
 export async function signOut(): Promise<void> {
   const { redirect } = await import("next/navigation");
   const supabase = createServerClient();
-  await supabase.auth.signOut();
+  // Local scope only - doesn't invalidate other sessions (keeps extension logged in)
+  await supabase.auth.signOut({ scope: "local" });
   redirect("/login");
 }
 
@@ -35,7 +36,7 @@ export async function deleteAccount(): Promise<ActionResult<void>> {
     const { session } = await requireAuth();
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const anonKey     = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !anonKey) {
       return fail("Sunucu yapılandırma hatası.");
@@ -52,7 +53,8 @@ export async function deleteAccount(): Promise<ActionResult<void>> {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      const message = (body as { error?: string }).error ?? `HTTP ${res.status}`;
+      const message =
+        (body as { error?: string }).error ?? `HTTP ${res.status}`;
       return fail("Hesap silinirken bir hata oluştu: " + message);
     }
 

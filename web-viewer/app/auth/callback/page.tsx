@@ -19,10 +19,26 @@ export default function AuthCallbackPage() {
 
     // Get the redirect destination from localStorage (set by login page)
     // Falls back to /feed if not set
+    // Also handles share target params for PWA share flow
     const getRedirectUrl = (): string => {
       try {
         const next = localStorage.getItem("auth_redirect_next");
+        const shareUrl = localStorage.getItem("auth_share_url");
+        const shareText = localStorage.getItem("auth_share_text");
+
+        // Clean up
         localStorage.removeItem("auth_redirect_next");
+        localStorage.removeItem("auth_share_url");
+        localStorage.removeItem("auth_share_text");
+
+        // If we have share params, redirect to share-target with them
+        if (next === "/share-target" && shareUrl) {
+          const params = new URLSearchParams();
+          params.set("url", shareUrl);
+          if (shareText) params.set("text", shareText);
+          return `/share-target?${params.toString()}`;
+        }
+
         // Validate: must start with / and not be an external URL
         if (next && next.startsWith("/") && !next.startsWith("//")) {
           return next;
@@ -136,10 +152,37 @@ export default function AuthCallbackPage() {
   // Full-screen overlay to prevent seeing anything underneath
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-zinc-50 dark:bg-zinc-950">
-      <div className="text-center space-y-4">
+      <div className="text-center space-y-6">
         {(status === "loading" || status === "authenticating") && (
           <>
-            <div className="w-12 h-12 border-2 border-zinc-200 dark:border-zinc-800 border-t-zinc-900 dark:border-t-zinc-100 rounded-full animate-spin mx-auto" />
+            {/* Square spinner with moving line */}
+            <div className="relative w-10 h-10 mx-auto">
+              <svg className="w-full h-full" viewBox="0 0 40 40">
+                {/* Background square */}
+                <rect
+                  x="2"
+                  y="2"
+                  width="36"
+                  height="36"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="text-zinc-200 dark:text-zinc-800"
+                />
+                {/* Animated line */}
+                <rect
+                  x="2"
+                  y="2"
+                  width="36"
+                  height="36"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeDasharray="36 108"
+                  className="text-zinc-900 dark:text-zinc-100 animate-square-spin"
+                />
+              </svg>
+            </div>
             <p className="mono text-sm text-zinc-500">
               {status === "loading" ? "Hazırlanıyor..." : "Giriş yapılıyor..."}
             </p>

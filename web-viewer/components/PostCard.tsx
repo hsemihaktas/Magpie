@@ -748,6 +748,7 @@ interface PostCardProps {
     collectionId: string | null,
     collectionName: string | null,
   ) => void;
+  onDeleted?: (postId: string) => void;
   allTags?: Tag[];
   onTagsChanged?: (postId: string, tags: Tag[]) => void;
 }
@@ -762,6 +763,7 @@ export default function PostCard({
   isCollaborativeView = false,
   ownedCollections,
   onMovePost,
+  onDeleted,
   allTags = [],
   onTagsChanged,
 }: PostCardProps) {
@@ -795,7 +797,10 @@ export default function PostCard({
     setShowDetailModal(false);
     startTransition(async () => {
       const result = await deletePost(post.id);
-      if (result.ok) setDeleted(true);
+      if (result.ok) {
+        setDeleted(true);
+        onDeleted?.(post.id);
+      }
     });
   };
 

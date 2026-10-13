@@ -18,6 +18,15 @@ const config: Config = {
           "monospace",
         ],
       },
+      animation: {
+        "square-spin": "square-spin 1.5s linear infinite",
+      },
+      keyframes: {
+        "square-spin": {
+          "0%": { strokeDashoffset: "0" },
+          "100%": { strokeDashoffset: "-144" },
+        },
+      },
     },
   },
   plugins: [],

@@ -380,6 +380,39 @@ body {
 .collections-footer {
   padding: 8px 12px;
   border-top: 1px solid #e4e4e7;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.footer-links {
+  display: flex;
+  gap: 6px;
+}
+
+.footer-link {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid #e4e4e7;
+  background: transparent;
+  color: #71717a;
+  font-family:
+    "SF Mono", "Fira Code", "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-decoration: none;
+  transition: all 0.15s;
+}
+
+.footer-link:hover {
+  color: #18181b;
+  background: #f4f4f5;
+  border-color: #a1a1aa;
 }
 
 .web-archive-btn {
@@ -619,6 +652,17 @@ body {
 
 .dark .collections-footer {
   border-top-color: #27272a;
+}
+
+.dark .footer-link {
+  border-color: #27272a;
+  color: #71717a;
+}
+
+.dark .footer-link:hover {
+  color: #fafafa;
+  background: #18181b;
+  border-color: #3f3f46;
 }
 
 .dark .btn--primary {

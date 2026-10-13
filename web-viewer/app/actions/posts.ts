@@ -7,7 +7,6 @@
  *   deletePost  — single post deletion with Storage cleanup
  *   deletePosts — bulk post deletion with Storage cleanup
  */
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAuth } from "@/lib/server-auth";
 import { ok, fail, type ActionResult } from "@/lib/action-result";
@@ -178,7 +177,6 @@ export async function deletePost(postId: string): Promise<ActionResult> {
           .catch(() => {});
     }
 
-    revalidatePath("/feed");
     return ok(undefined);
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Silme başarısız.");
@@ -218,7 +216,6 @@ export async function deletePosts(postIds: string[]): Promise<ActionResult> {
           .catch(() => {});
     }
 
-    revalidatePath("/feed");
     return ok(undefined);
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Toplu silme başarısız.");
@@ -253,7 +250,6 @@ export async function movePost(
       .eq("user_id", session.user.id);
 
     if (error) return fail(error.message);
-    revalidatePath("/feed");
     return ok(undefined);
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Taşıma başarısız.");

@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase";
 import CollectionFilter from "@/components/CollectionFilter";
+import MobileSidebar from "@/components/MobileSidebar";
 import PostCardList from "@/components/PostCardList";
 import type {
   Collection,
@@ -218,9 +219,9 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
 
   return (
     <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-6 flex gap-8 items-start">
-      {/* Sidebar */}
+      {/* Desktop Sidebar - hidden on mobile */}
       <Suspense fallback={null}>
-        <div className="w-48 shrink-0 sticky top-[calc(3rem+1.5rem)]">
+        <div className="w-48 shrink-0 sticky top-[calc(3rem+1.5rem)] hidden md:block">
           <CollectionFilter
             ownedCollections={(ownedCollections as Collection[]) ?? []}
             sharedCollections={(sharedCollections as SharedCollection[]) ?? []}
@@ -230,6 +231,15 @@ export default async function FeedPage({ searchParams }: FeedPageProps) {
           />
         </div>
       </Suspense>
+
+      {/* Mobile Sidebar - hidden on desktop */}
+      <MobileSidebar
+        ownedCollections={(ownedCollections as Collection[]) ?? []}
+        sharedCollections={(sharedCollections as SharedCollection[]) ?? []}
+        activeCollectionId={collectionId}
+        tags={tags}
+        activeTagId={tagId}
+      />
 
       {/* Main */}
       <div className="flex-1 min-w-0 flex flex-col gap-4">

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { ModalPortal } from "@/components/ModalPortal";
 import ThemeToggle from "@/components/ThemeToggle";
 import { DeleteAccountDialog } from "@/components/DeleteAccountDialog";
@@ -118,7 +117,7 @@ export function SettingsButton({ email }: SettingsButtonProps) {
 
               {/* Gizlilik */}
               <div className="px-4 py-3 flex flex-col gap-1">
-                <Link
+                <a
                   href="/privacy"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -126,8 +125,8 @@ export function SettingsButton({ email }: SettingsButtonProps) {
                   className="flex items-center justify-between py-1.5 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
                 >
                   Gizlilik Politikası <ExternalIcon />
-                </Link>
-                <Link
+                </a>
+                <a
                   href="/terms"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -135,7 +134,7 @@ export function SettingsButton({ email }: SettingsButtonProps) {
                   className="flex items-center justify-between py-1.5 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
                 >
                   Kullanım Koşulları <ExternalIcon />
-                </Link>
+                </a>
               </div>
 
               <div className="mx-4 border-t border-zinc-100 dark:border-zinc-800" />

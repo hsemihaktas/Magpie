@@ -9,15 +9,25 @@ export default function GoogleSignInButton() {
   const [loading, setLoading] = useState(false);
   const searchParams = useSearchParams();
 
-  // Store the 'next' param in localStorage so callback can use it
+  // Store the 'next' param and share params in localStorage so callback can use it
   useEffect(() => {
     const next = searchParams.get("next");
-    if (next) {
-      try {
+    const shareUrl = searchParams.get("share_url");
+    const shareText = searchParams.get("share_text");
+
+    try {
+      if (next) {
         localStorage.setItem("auth_redirect_next", next);
-      } catch {
-        // localStorage might not be available
       }
+      // Store share params for after auth
+      if (shareUrl) {
+        localStorage.setItem("auth_share_url", shareUrl);
+      }
+      if (shareText) {
+        localStorage.setItem("auth_share_text", shareText);
+      }
+    } catch {
+      // localStorage might not be available
     }
   }, [searchParams]);
 

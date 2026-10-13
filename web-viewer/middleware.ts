@@ -15,7 +15,7 @@ import { createMiddlewareSupabaseClient } from "@/lib/supabase";
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Routes that require authentication */
-const PROTECTED_ROUTES = ["/feed", "/settings"];
+const PROTECTED_ROUTES = ["/feed", "/settings", "/share-target"];
 
 /** Routes only for unauthenticated users (logged-in users get redirected) */
 const AUTH_ROUTES = ["/login"];

@@ -8,12 +8,15 @@
 Silently save posts from Instagram, X, and Threads to your collections.
 Browse them anytime on the web. Share, collaborate, and leave comments.
 
+🌐 **[magpie-archive.vercel.app](https://magpie-archive.vercel.app)** — Try it now!
+
 [Türkçe](README.md)
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)
 ![Supabase](https://img.shields.io/badge/Supabase-Postgres+Auth+RLS-3fcf8e?logo=supabase)
 ![Chrome MV3](https://img.shields.io/badge/Chrome_Extension-MV3-4285f4?logo=googlechrome&logoColor=white)
+![PWA](https://img.shields.io/badge/PWA-Installable-5a0fc8?logo=pwa)
 
 [![CI](https://github.com/hsemihaktas/Magpie/actions/workflows/ci.yml/badge.svg)](https://github.com/hsemihaktas/Magpie/actions/workflows/ci.yml)
 [![Supabase RLS Tests](https://github.com/hsemihaktas/Magpie/actions/workflows/supabase.yml/badge.svg)](https://github.com/hsemihaktas/Magpie/actions/workflows/supabase.yml)
@@ -50,12 +53,16 @@ Browse them anytime on the web. Share, collaborate, and leave comments.
 ### Web Viewer
 
 - **Minimalist design** — ultra-minimal UI inspired by Linear/Raycast
+- **PWA support** — add to home screen, use like a native app
+- **Add by URL** — save posts by pasting links, no extension needed
+- **Auto metadata fetching** — images and text automatically fetched for X posts
 - **Infinite scroll** — cursor-based pagination
 - **Full-text search** — search in captions, authors, and notes
 - **Platform filtering** — filter by Instagram, X, or Threads
 - **Collection management** — create, rename, set default, delete
 - **Bulk operations** — select multiple posts and delete
 - **Dark mode** — automatic based on system preference
+- **Mobile friendly** — responsive design, mobile sidebar
 
 ### Tags & Comments
 
@@ -72,6 +79,13 @@ Browse them anytime on the web. Share, collaborate, and leave comments.
 - **Collaborative Collection** — invite collaborators who can add posts and comments
 - **Member management** — revoke access anytime
 - **RLS protection** — all permissions enforced at database level
+
+### PWA & Mobile
+
+- **Add to home screen** — install from browser, open like an app
+- **Share Target (Android)** — save directly from the Share menu on mobile
+- **Offline ready** — basic caching with service worker
+- **Mobile sidebar** — hamburger menu for collection access
 
 ---
 
@@ -126,33 +140,48 @@ npm run dev
 
 ## Usage
 
-### Saving Posts
+### Saving Posts (Extension)
 
 1. Hover over a post on Instagram, X, or Threads
 2. Click the **archive button** that appears in the top-right corner
 3. On first use, the collection picker opens
 4. Subsequent saves go directly to the default collection
 
+### Saving Posts (by URL)
+
+1. Click the **ADD BY URL** button in the web viewer
+2. Paste an Instagram, X, or Threads post link
+3. Platform is auto-detected, select a collection
+4. **Save** — images and text are automatically fetched for X posts
+
+### Saving on Mobile (Android)
+
+1. Add Magpie to home screen (install as PWA)
+2. Open a post in Instagram or X app
+3. **Share** → Select **Magpie**
+4. If logged in, it saves directly
+
 ### Web Viewer
 
-| Action | How |
-|--------|-----|
-| Filter by platform | Click platform tabs in the top bar |
-| Filter by collection | Select collection from sidebar |
-| Search | Use the search bar at the top |
-| Change collection | Click the collection name (▼) below the card |
-| Add tag | Click the tag icon on the card |
-| Add comment | Use the comment section in card details |
-| Bulk delete | **Select** → click cards → **Delete** |
+| Action               | How                                          |
+| -------------------- | -------------------------------------------- |
+| Filter by platform   | Click platform tabs in the top bar           |
+| Filter by collection | Select collection from sidebar               |
+| Search               | Use the search bar at the top                |
+| Change collection    | Click the collection name (▼) below the card |
+| Add tag              | Click the tag icon on the card               |
+| Add comment          | Use the comment section in card details      |
+| Bulk delete          | **Select** → click cards → **Delete**        |
+| Add by URL           | **ADD BY URL** → paste link                  |
 
 ---
 
 ## Collection Types
 
-| Type | Description |
-|------|-------------|
-| **Personal** | Only you can view and edit |
-| **Shared** | Invitees can only view |
+| Type              | Description                         |
+| ----------------- | ----------------------------------- |
+| **Personal**      | Only you can view and edit          |
+| **Shared**        | Invitees can only view              |
 | **Collaborative** | Invitees can add posts and comments |
 
 ---
@@ -170,6 +199,24 @@ cd web-viewer && npm run dev
 # Tests
 cd extension && npm test
 supabase test db
+```
+
+### Project Structure
+
+```
+├── extension/           # Chrome extension (MV3)
+│   ├── background/      # Service worker
+│   ├── content-scripts/ # Platform adapters
+│   ├── popup/           # Extension popup UI
+│   └── shared/          # Shared types and helpers
+│
+├── web-viewer/          # Next.js web application
+│   ├── app/             # App router pages
+│   ├── components/      # React components
+│   ├── lib/             # Helper functions
+│   └── public/          # Static files (PWA manifest, SW)
+│
+└── supabase/            # Database migrations and tests
 ```
 
 ---

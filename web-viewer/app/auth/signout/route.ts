@@ -7,8 +7,9 @@ export async function GET(request: NextRequest) {
   const cookieStore = cookies();
   const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
 
-  // Sign out from Supabase (invalidates the session on server)
-  await supabase.auth.signOut();
+  // Sign out from Supabase (local scope only - doesn't invalidate other sessions)
+  // This keeps the extension session intact when logging out from web
+  await supabase.auth.signOut({ scope: "local" });
 
   // Create redirect response to login
   const loginUrl = new URL("/login", request.url);

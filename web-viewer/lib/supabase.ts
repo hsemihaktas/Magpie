@@ -16,16 +16,26 @@ import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { NextRequest, NextResponse } from "next/server";
 
-// ── Environment variable assertions ──────────────────────────────────────────
+// ── Environment variable helpers ──────────────────────────────────────────────
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    "Missing required environment variables: NEXT_PUBLIC_SUPABASE_URL and/or NEXT_PUBLIC_SUPABASE_ANON_KEY. " +
-      "Copy .env.example to .env.local and fill in your Supabase project credentials."
-  );
+/**
+ * Validates that the required Supabase env vars are present.
+ * Called lazily inside functions rather than at module load time so that
+ * `next build` can complete even when env vars are not available in the
+ * build environment (e.g. Dependabot preview deployments). The error is
+ * still thrown at runtime before any Supabase call is made.
+ */
+function requireSupabaseEnv(): { url: string; anonKey: string } {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error(
+      "Missing required environment variables: NEXT_PUBLIC_SUPABASE_URL and/or NEXT_PUBLIC_SUPABASE_ANON_KEY. " +
+        "Copy .env.example to .env.local and fill in your Supabase project credentials.",
+    );
+  }
+  return { url: supabaseUrl, anonKey: supabaseAnonKey };
 }
 
 // ── Server Component client ──────────────────────────────────────────────────
@@ -60,7 +70,7 @@ export function createServerClient() {
  * ```
  */
 export function createRouteHandlerSupabaseClient(
-  cookieStore: ReturnType<typeof cookies>
+  cookieStore: ReturnType<typeof cookies>,
 ) {
   return createRouteHandlerClient({ cookies: () => cookieStore });
 }
@@ -82,7 +92,7 @@ export function createRouteHandlerSupabaseClient(
  */
 export function createMiddlewareSupabaseClient(
   req: NextRequest,
-  res: NextResponse
+  res: NextResponse,
 ) {
   return createMiddlewareClient({ req, res });
 }
@@ -102,7 +112,8 @@ export function createMiddlewareSupabaseClient(
  * ```
  */
 export function createBrowserClient() {
-  return createClient(supabaseUrl!, supabaseAnonKey!);
+  const { url, anonKey } = requireSupabaseEnv();
+  return createClient(url, anonKey);
 }
 
 // ── Service-Role (Admin) client ──────────────────────────────────────────────
@@ -113,14 +124,15 @@ export function createBrowserClient() {
  * NEVER import in Client Components, shared utilities, or anywhere accessible to the browser.
  */
 export function createAdminClient() {
+  const { url } = requireSupabaseEnv();
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceRoleKey) {
     throw new Error(
       "Missing SUPABASE_SERVICE_ROLE_KEY. Add it to .env.local. " +
-        "Never expose this key client-side."
+        "Never expose this key client-side.",
     );
   }
-  return createClient(supabaseUrl!, serviceRoleKey, {
+  return createClient(url, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }

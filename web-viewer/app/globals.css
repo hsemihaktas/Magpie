@@ -5,7 +5,8 @@
 /* Ultra-minimalist archive design system */
 @layer base {
   :root {
-    /* Font variable is set by next/font in layout.tsx */
+    /* Font variable — set here since next/font is not used */
+    --font-mono: "JetBrains Mono", monospace;
     /* Safe area insets for PWA */
     --safe-area-inset-top: env(safe-area-inset-top, 0px);
     --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);

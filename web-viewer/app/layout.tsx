@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { Suspense } from "react";
-import { JetBrains_Mono } from "next/font/google";
 import { HeaderWrapper } from "@/components/HeaderWrapper";
 import { UserEmail } from "@/components/UserEmail";
 import { SettingsButton } from "@/components/SettingsButton";
@@ -11,13 +10,6 @@ import { AuthSyncProvider } from "@/components/AuthSyncProvider";
 import { NavbarAuth } from "@/components/NavbarAuth";
 import { createServerClient } from "@/lib/supabase";
 import "./globals.css";
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-mono",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "Magpie Archive",
@@ -57,8 +49,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={jetbrainsMono.variable} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
+        {/* JetBrains Mono — loaded via link to avoid next/font loader bug in 14.2.x */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
+        <link
+          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap"
+          rel="stylesheet"
+        />
         {/* Theme detection (before paint) */}
         <script
           dangerouslySetInnerHTML={{
